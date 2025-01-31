@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use regex::Regex;
 use rig::{
     agent::Agent,
     completion::{Chat, Message},
@@ -47,10 +48,15 @@ impl ChatClient {
     }
 
     pub async fn prompt(&self, prompt: &str, context: Vec<Message>) -> Result<Message> {
+        let content = self.client.chat(prompt, context).await?;
+
+        let regex = Regex::new(r"```.*").unwrap();
+        let content = regex.replace_all(&content, "").to_string();
+
         // tokio::time::sleep(std::time::Duration::from_secs(5)).await; // simulate API call latency
         Ok(Message {
             role: "assistant".to_string(),
-            content: self.client.chat(prompt, context).await?,
+            content: content,
         })
     }
 }
