@@ -126,10 +126,10 @@ impl ChatContext {
 
         let prompt = context.iter().nth(len - 2).unwrap().content.clone();
 
-        context.push(CompletionMessage {
-            role: "system".to_string(),
-            content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
-        });
+        // context.push(CompletionMessage {
+        //     role: "system".to_string(),
+        //     content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
+        // });
 
         (prompt, context)
     }
