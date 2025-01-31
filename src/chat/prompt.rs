@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use chrono::TimeZone;
 use serde::{Deserialize, Serialize};
 
 pub struct SystemPrompt {
@@ -162,6 +163,14 @@ Your job is to respond to last message from {}. You can use other messages for c
                 builder.user_name, user_about
             ));
         }
+
+        println!("{}", chrono::Local::now().to_rfc2822());
+        prompt.push_str(&format!(
+            "## System Time
+{}
+",
+            chrono::Local::now().to_rfc2822()
+        ));
 
         Self {
             inner: prompt,
