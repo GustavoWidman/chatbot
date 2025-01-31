@@ -145,6 +145,29 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction.into_message_component() {
             Some(mut component) => {
+                let _ = component.defer(&ctx.http).await;
+                let _ = component
+                    .message
+                    .edit(
+                        &ctx.http,
+                        EditMessage::new()
+                            .button(
+                                CreateButton::new("previous")
+                                    .label("")
+                                    .emoji('⏪')
+                                    .style(serenity::all::ButtonStyle::Secondary)
+                                    .disabled(true),
+                            )
+                            .button(
+                                CreateButton::new("regen")
+                                    .label("")
+                                    .emoji('⏩')
+                                    .style(serenity::all::ButtonStyle::Secondary)
+                                    .disabled(true),
+                            ),
+                    )
+                    .await;
+
                 match component.data.custom_id.as_str() {
                     "regen" => {
                         let mut user_map = self.user_map.write().await;
@@ -173,7 +196,8 @@ impl EventHandler for Handler {
                                                 CreateButton::new("regen")
                                                     .label("")
                                                     .emoji('⏩')
-                                                    .style(serenity::all::ButtonStyle::Secondary),
+                                                    .style(serenity::all::ButtonStyle::Secondary)
+                                                    .disabled(false),
                                             ),
                                     )
                                     .await;
@@ -203,8 +227,6 @@ impl EventHandler for Handler {
 
                         if let Err(why) = m {
                             println!("Error editing message: {why:?}");
-                        } else {
-                            let _ = component.defer(&ctx.http).await;
                         }
                     }
                     "previous" => {
@@ -232,15 +254,14 @@ impl EventHandler for Handler {
                                         CreateButton::new("next")
                                             .label("")
                                             .emoji('⏩')
-                                            .style(serenity::all::ButtonStyle::Secondary),
+                                            .style(serenity::all::ButtonStyle::Secondary)
+                                            .disabled(false),
                                     ),
                             )
                             .await;
 
                         if let Err(why) = m {
                             println!("Error editing message: {why:?}");
-                        } else {
-                            let _ = component.defer(&ctx.http).await;
                         }
                     }
                     "next" => {
@@ -274,15 +295,14 @@ impl EventHandler for Handler {
                                         CreateButton::new(can_go_fwd)
                                             .label("")
                                             .emoji('⏩')
-                                            .style(serenity::all::ButtonStyle::Secondary),
+                                            .style(serenity::all::ButtonStyle::Secondary)
+                                            .disabled(false),
                                     ),
                             )
                             .await;
 
                         if let Err(why) = m {
                             println!("Error editing message: {why:?}");
-                        } else {
-                            let _ = component.defer(&ctx.http).await;
                         }
                     }
                     _ => {}

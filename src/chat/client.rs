@@ -28,9 +28,9 @@ pub struct ChatClient {
 impl ChatClient {
     pub fn new() -> Self {
         let settings = ClientSettings {
-            temperature: 0.7,
-            top_p: 0.7,
-            max_res_tokens: 1024,
+            temperature: 1.0,
+            top_p: 0.95,
+            max_res_tokens: 8192,
             // frequency_penalty: 0.0,
             // presence_penalty: 0.0,
             model: dotenv!("CHAT_MODEL").to_string(),
