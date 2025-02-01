@@ -13,9 +13,6 @@ mod bot;
 mod chat;
 mod config;
 
-#[macro_use]
-extern crate dotenvy_macro;
-
 #[tokio::main]
 async fn main() {
     let config = ChatBotConfig::read(PathBuf::from("config.toml")).unwrap();

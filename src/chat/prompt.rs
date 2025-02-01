@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use chrono::TimeZone;
+use chrono_tz::{America::Sao_Paulo, Tz};
 use serde::{Deserialize, Serialize};
 
 pub struct SystemPrompt {
@@ -31,6 +32,7 @@ impl SystemPrompt {
 
 ## Task
 Your job is to respond to last message from {}. You can use other messages for context but don't directly address them. DO NOT output an empty message. ALWAYS reply. NO EMPTY MESSAGE. you can message many times in a row. just continue the conversation. do not reply with empty message.
+
 ",
             builder.chatbot_name, builder.chatbot_name, builder.chatbot_name, builder.user_name, builder.user_name
         ));
@@ -39,6 +41,7 @@ Your job is to respond to last message from {}. You can use other messages for c
         prompt.push_str(&format!(
             "## About {}
 {}
+
 ",
             builder.chatbot_name, builder.about
         ));
@@ -47,6 +50,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## Tone
 {}
+
 ",
                 tone
             ));
@@ -56,6 +60,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## Age
 {}
+
 ",
                 age
             ));
@@ -65,6 +70,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## Likes
 {}
+
 ",
                 likes
                     .into_iter()
@@ -78,6 +84,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## Dislikes
 {}
+
 ",
                 dislikes
                     .into_iter()
@@ -91,6 +98,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## History
 {}
+
 ",
                 history
             ));
@@ -100,6 +108,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## Conversation Goals
 {}
+
 ",
                 conversation_goals
                     .into_iter()
@@ -112,12 +121,18 @@ Your job is to respond to last message from {}. You can use other messages for c
         if let Some(conversational_examples) = builder.conversational_examples {
             prompt.push_str(&format!(
                 "## Conversational Examples
+
 {}
+
 ",
                 conversational_examples
                     .into_iter()
                     .enumerate()
-                    .map(|(i, example)| format!("### Example {}\n{}", i + 1, example))
+                    .map(|(i, example)| format!(
+                        "### Example {}\n```example\n{}\n```\n",
+                        i + 1,
+                        example
+                    ))
                     .collect::<Vec<_>>()
                     .join("\n")
             ));
@@ -126,12 +141,18 @@ Your job is to respond to last message from {}. You can use other messages for c
         if let Some(context) = builder.context {
             prompt.push_str(&format!(
                 "## Context
+
 {}
+
 ",
                 context
                     .into_iter()
                     .enumerate()
-                    .map(|(i, context)| format!("### Context {}\n{}", i + 1, context))
+                    .map(|(i, context)| format!(
+                        "### Context {}\n```context\n{}\n```\n",
+                        i + 1,
+                        context
+                    ))
                     .collect::<Vec<_>>()
                     .join("\n")
             ));
@@ -141,6 +162,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             prompt.push_str(&format!(
                 "## Long Term Memory
 {}
+
 ",
                 long_term_memory
                     .into_iter()
@@ -158,19 +180,24 @@ Your job is to respond to last message from {}. You can use other messages for c
         if let Some(user_about) = builder.user_about {
             prompt.push_str(&format!(
                 "## {}'s About
-{}
-",
+    {}
+
+    ",
                 builder.user_name, user_about
             ));
         }
 
-        println!("{}", chrono::Local::now().to_rfc2822());
-        prompt.push_str(&format!(
-            "## System Time
-{}
-",
-            chrono::Local::now().to_rfc2822()
-        ));
+        //         if let Some(timezone) = builder.timezone {
+        //             prompt.push_str(&format!(
+        //                 "## System Time
+        // {}
+        //
+        // ",
+        //                 chrono::Utc::now()
+        //                     .with_timezone(&timezone)
+        //                     .format("%Y-%m-%d %H:%M:%S %z")
+        //             ));
+        //         }
 
         Self {
             inner: prompt,
@@ -214,6 +241,7 @@ pub struct SystemPromptBuilder {
     context: Option<Vec<String>>,
     long_term_memory: Option<Vec<String>>,
     user_about: Option<String>,
+    timezone: Option<Tz>,
 }
 impl SystemPromptBuilder {
     pub fn new(chatbot_name: String, user_name: String, about: String) -> Self {
@@ -231,6 +259,7 @@ impl SystemPromptBuilder {
             context: None,
             long_term_memory: None,
             user_about: None,
+            timezone: None,
         }
     }
 
@@ -356,18 +385,34 @@ impl SystemPromptBuilder {
         self
     }
 
-    pub fn build(mut self) -> SystemPrompt {
+    pub fn timezone(mut self, timezone: Tz) -> Self {
+        self.timezone = Some(timezone);
+        self
+    }
+
+    pub fn build(mut self) -> (SystemPrompt, String) {
+        let time = if let Some(timezone) = self.timezone {
+            chrono::Utc::now()
+                .with_timezone(&timezone)
+                .format("%Y-%m-%d %H:%M:%S %z")
+        } else {
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S %z")
+        }
+        .to_string();
+
         if let Some(tone) = self.tone {
             self.tone = Some(
                 tone.replace("{user}", &self.user_name)
-                    .replace("{bot}", &self.chatbot_name),
+                    .replace("{bot}", &self.chatbot_name)
+                    .replace("{time}", &time),
             );
         }
 
         if let Some(age) = self.age {
             self.age = Some(
                 age.replace("{user}", &self.user_name)
-                    .replace("{bot}", &self.chatbot_name),
+                    .replace("{bot}", &self.chatbot_name)
+                    .replace("{time}", &time),
             );
         }
 
@@ -378,6 +423,7 @@ impl SystemPromptBuilder {
                     .map(|like| {
                         like.replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
+                            .replace("{time}", &time)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -390,6 +436,7 @@ impl SystemPromptBuilder {
                     .map(|like| {
                         like.replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
+                            .replace("{time}", &time)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -399,7 +446,8 @@ impl SystemPromptBuilder {
             self.history = Some(
                 history
                     .replace("{user}", &self.user_name)
-                    .replace("{bot}", &self.chatbot_name),
+                    .replace("{bot}", &self.chatbot_name)
+                    .replace("{time}", &time),
             );
         }
 
@@ -410,6 +458,7 @@ impl SystemPromptBuilder {
                     .map(|like| {
                         like.replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
+                            .replace("{time}", &time)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -424,6 +473,7 @@ impl SystemPromptBuilder {
                         example
                             .replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
+                            .replace("{time}", &time)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -438,6 +488,7 @@ impl SystemPromptBuilder {
                         context
                             .replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
+                            .replace("{time}", &time)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -452,6 +503,7 @@ impl SystemPromptBuilder {
                         long_term_memory
                             .replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
+                            .replace("{time}", &time)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -461,10 +513,11 @@ impl SystemPromptBuilder {
             self.user_about = Some(
                 user_about
                     .replace("{user}", &self.user_name)
-                    .replace("{bot}", &self.chatbot_name),
+                    .replace("{bot}", &self.chatbot_name)
+                    .replace("{time}", &time),
             );
         }
 
-        SystemPrompt::new(self)
+        (SystemPrompt::new(self), time)
     }
 }

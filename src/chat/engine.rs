@@ -1,8 +1,14 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use anyhow::{Result, anyhow};
 use rig::completion::{CompletionModel, Message};
 use serenity::prelude::TypeMapKey;
+use tokio::sync::RwLock;
+
+use crate::config::store::ChatBotConfig;
 
 use super::{
     client::ChatClient,
@@ -20,9 +26,9 @@ impl TypeMapKey for ChatEngine {
 }
 
 impl ChatEngine {
-    pub fn new(config: &SystemPromptBuilder) -> Self {
-        let client = ChatClient::new();
-        let context = ChatContext::new(config);
+    pub fn new(config: ChatBotConfig) -> Self {
+        let client = ChatClient::new(&config.llm);
+        let context = ChatContext::new(&config.prompt);
 
         Self { client, context }
     }

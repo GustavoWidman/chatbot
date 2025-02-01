@@ -1,15 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
-
 use anyhow::Result;
 use handler::Handler;
-use serenity::{
-    Client,
-    all::{EventHandler, GatewayIntents, User},
-    prelude::TypeMapKey,
-};
-use tokio::sync::RwLock;
+use serenity::{Client, all::GatewayIntents};
 
-use crate::{chat::engine::ChatEngine, config::store::ChatBotConfig};
+use crate::config::store::ChatBotConfig;
 
 mod handler;
 
@@ -18,10 +11,13 @@ pub struct ChatBot {
 }
 impl ChatBot {
     pub async fn new(config: ChatBotConfig) -> Result<Self> {
-        let intents = GatewayIntents::all();
+        let builder = serenity::Client::builder(&config.discord.token, GatewayIntents::all());
 
-        let client = Client::builder(&config.discord.token, intents)
-            .event_handler(Handler::new(config))
+        let (framework, data) = handler::commands::framework(config).await;
+
+        let client = builder
+            .event_handler(Handler::new(data))
+            .framework(framework)
             .await?;
 
         Ok(Self { client })
