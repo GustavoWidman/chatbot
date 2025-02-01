@@ -5,8 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.95"
-chrono = "0.4.39"
-dotenvy_macro = "0.15.7"
+chrono = { version = "0.4.39", features = ["serde"] }
+chrono-tz = { version = "0.10.1", features = ["serde"] }
+poise = "0.6.1"
 regex = "1.11.1"
 rig-core = { version = "0.7.0", features = ["derive"] }
 serde = { version = "1.0.217", features = ["derive"] }

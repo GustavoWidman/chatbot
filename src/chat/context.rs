@@ -96,7 +96,7 @@ impl ChatContext {
 
     pub fn get_context(&self) -> Vec<CompletionMessage> {
         let mut context = vec![];
-        let system_prompt = self.system_prompt.clone().build();
+        let (system_prompt, time) = self.system_prompt.clone().build();
 
         context.push(CompletionMessage {
             role: "system".to_string(),
@@ -113,6 +113,15 @@ impl ChatContext {
             }
         });
 
+        // Add the time
+        context.push(CompletionMessage {
+            role: "system".to_string(),
+            content: format!(
+                "Updated date and time, use the following timestamp for this reply: {}",
+                time
+            ),
+        });
+
         context
     }
 
@@ -126,11 +135,15 @@ impl ChatContext {
 
         let prompt = context.iter().nth(len - 2).unwrap().content.clone();
 
-        // context.push(CompletionMessage {
-        //     role: "system".to_string(),
-        //     content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
-        // });
+        context.push(CompletionMessage {
+            role: "system".to_string(),
+            content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
+        });
 
         (prompt, context)
+    }
+
+    pub fn clear_context(&mut self) {
+        self.messages.clear();
     }
 }
