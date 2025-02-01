@@ -1,28 +1,18 @@
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::ops::{Deref, DerefMut};
 
-use anyhow::{Result, anyhow};
-use rig::completion::{CompletionModel, Message};
-use serenity::prelude::TypeMapKey;
-use tokio::sync::RwLock;
+use anyhow::Result;
+use genai::chat::ChatMessage;
 
 use crate::config::store::ChatBotConfig;
 
 use super::{
     client::ChatClient,
-    context::ChatContext,
-    prompt::{SystemPrompt, SystemPromptBuilder},
+    context::{ChatContext, CompletionMessage},
 };
 
 pub struct ChatEngine {
     client: ChatClient,
     context: ChatContext,
-}
-
-impl TypeMapKey for ChatEngine {
-    type Value = ChatEngine;
 }
 
 impl ChatEngine {
@@ -35,10 +25,28 @@ impl ChatEngine {
 
     pub async fn user_prompt(
         &mut self,
-        prompt: String,
-        context: Vec<Message>,
-    ) -> anyhow::Result<Message> {
-        Ok(self.client.prompt(&prompt, context).await?)
+        prompt: Option<String>,
+        context: Vec<CompletionMessage>,
+    ) -> anyhow::Result<CompletionMessage> {
+        let retries = 5;
+
+        for i in 0..retries {
+            let response = self
+                .client
+                .prompt(
+                    prompt.clone(),
+                    context.clone().into_iter().map(|m| m.into()).collect(),
+                )
+                .await?;
+            if response.content.len() > 2000 {
+                println!("too big, retry #{i}");
+                continue;
+            } else {
+                return Ok(response);
+            }
+        }
+
+        Err(anyhow::anyhow!("too many retries"))
     }
 }
 

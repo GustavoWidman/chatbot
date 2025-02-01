@@ -46,7 +46,10 @@ impl Handler {
 
         component
             .message
-            .edit(&ctx.http, EditMessage::new().components(vec![buttons]))
+            .edit(
+                ctx.http.clone(),
+                EditMessage::new().components(vec![buttons]),
+            )
             .await?;
 
         Ok(())

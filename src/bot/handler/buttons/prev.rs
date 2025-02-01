@@ -14,6 +14,7 @@ impl Handler {
 
         let mut user_map = data.user_map.write().await;
         let engine = user_map.entry(component.user.clone()).or_insert_with({
+            data.config.write().await.update();
             let config = data.config.read().await.clone();
             || chat::engine::ChatEngine::new(config)
         });
@@ -23,7 +24,7 @@ impl Handler {
         component
             .message
             .edit(
-                &ctx.http,
+                ctx.http.clone(),
                 EditMessage::new()
                     .content(message.content.clone())
                     .button(
