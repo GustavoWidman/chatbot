@@ -1,8 +1,4 @@
-use std::collections::hash_map::Entry;
-
-use poise::serenity_prelude as serenity;
-
-use crate::{chat, config};
+use crate::chat;
 
 use super::Data;
 
@@ -18,17 +14,23 @@ pub(super) async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     user_map
         .entry(ctx.author().clone())
         .and_modify({
-            let mut config = data.config.read().await.clone();
-            config.update();
+            data.config.write().await.update();
+            let config = data.config.read().await.clone();
             |engine| {
                 *engine = chat::engine::ChatEngine::new(config);
             }
         })
         .or_insert_with({
+            data.config.write().await.update();
             let mut config = data.config.read().await.clone();
             config.update();
             || chat::engine::ChatEngine::new(config)
         });
+
+    let mut freewill_map = data.freewill_map.write().await;
+    if let Some(handle) = freewill_map.remove(ctx.author()) {
+        handle.abort();
+    }
 
     ctx.say("wacked!").await?;
 

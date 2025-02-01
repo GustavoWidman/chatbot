@@ -73,7 +73,7 @@ impl EventHandler for Handler {
                     return;
                 }
 
-                let _ = component.defer(&ctx.http).await;
+                let _ = component.defer(ctx.http.clone()).await;
 
                 let result = match component.data.custom_id.as_str() {
                     "regen" => self.regen(component, ctx).await,

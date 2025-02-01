@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use serenity::prelude::TypeMapKey;
 
-use crate::chat::prompt::SystemPromptBuilder;
+use crate::chat::{client::ChatProvider, prompt::SystemPromptBuilder};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct ChatBotConfigTOML {
@@ -13,6 +12,7 @@ pub struct ChatBotConfigInner {
     pub discord: DiscordConfig,
     pub llm: LLMConfig,
     pub prompt: SystemPromptBuilder,
+    pub freewill: FreewillConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -21,11 +21,19 @@ pub struct DiscordConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct FreewillConfig {
+    pub min_time_secs: u64,
+    pub max_time_secs: u64,
+    pub steepness: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct LLMConfig {
-    // pub provider: String,
+    pub provider: ChatProvider,
     pub api_key: String,
     pub model: String,
-    pub max_tokens: Option<u64>,
+    pub custom_url: Option<String>,
+    pub max_tokens: Option<u32>,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
 }

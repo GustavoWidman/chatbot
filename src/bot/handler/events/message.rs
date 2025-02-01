@@ -1,9 +1,6 @@
 use std::vec;
 
-use serenity::{
-    Result,
-    all::{Context, CreateButton, CreateMessage, EditMessage, Message},
-};
+use serenity::all::{Context, CreateButton, CreateMessage, EditMessage, Message};
 
 use crate::chat;
 
@@ -19,16 +16,20 @@ impl Handler {
             data.msg_channel.0.send(msg.content.clone()).unwrap();
         }
 
+        self.freewill_dispatch(msg.author.clone(), msg.channel_id, ctx.http.clone())
+            .await;
+
         let typing = ctx.http.start_typing(msg.channel_id);
 
         let mut user_map = data.user_map.write().await;
         let engine = user_map.entry(msg.author.clone()).or_insert_with({
+            data.config.write().await.update();
             let config = data.config.read().await.clone();
             || chat::engine::ChatEngine::new(config)
         });
 
         let m = match engine
-            .user_prompt(msg.content.clone(), engine.get_context())
+            .user_prompt(Some(msg.content.clone()), engine.get_context())
             .await
         {
             Ok(response) => {
@@ -50,7 +51,10 @@ impl Handler {
                             .style(serenity::all::ButtonStyle::Secondary),
                     );
 
-                let msg = msg.channel_id.send_message(&ctx, message.clone()).await;
+                let msg = msg
+                    .channel_id
+                    .send_message(ctx.http.clone(), message.clone())
+                    .await;
 
                 match msg {
                     Ok(msg) => {
@@ -66,7 +70,7 @@ impl Handler {
             Err(why) => {
                 println!("Error generating response: {why:?}");
                 msg.channel_id
-                    .say(&ctx.http, "error generating response")
+                    .say(ctx.http.clone(), "error generating response")
                     .await
             }
         };
@@ -81,7 +85,7 @@ impl Handler {
                     // wait for msg to be sent
                     let _ = recv.recv().await;
                     let _ = m
-                        .edit(&ctx.http, EditMessage::new().components(vec![]))
+                        .edit(ctx.http.clone(), EditMessage::new().components(vec![]))
                         .await;
                 }
             }
