@@ -1,0 +1,9 @@
+POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions HTTP/1.1
+authorization: Bearer AIzaSyD_iF4mDuC_bGRln76JpGCy_7jj4UHgJZU
+user-agent: curl/8.7.1
+content-type: application/json
+accept: */*
+host: generativelanguage.googleapis.com
+content-length: 109
+
+{"model":"gemini-2.0-flash-exp","messages":[{"role":"user","content":"What did I tell you about my shirt?"}]}

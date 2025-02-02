@@ -131,10 +131,10 @@ impl ChatContext {
         let mut context = vec![];
         let (system_prompt, time) = self.system_prompt.clone().build();
 
-        context.push(CompletionMessage {
-            role: "system".to_string(),
-            content: system_prompt.to_string(),
-        });
+        // context.push(CompletionMessage {
+        //     role: "system".to_string(),
+        //     content: system_prompt.to_string(),
+        // });
 
         // Add the messages
         self.messages.clone().into_iter().for_each(|messages| {
@@ -147,13 +147,13 @@ impl ChatContext {
         });
 
         // Add the time
-        context.push(CompletionMessage {
-            role: "system".to_string(),
-            content: format!(
-                "Updated date and time, use the following timestamp for this reply: {}",
-                time
-            ),
-        });
+        // context.push(CompletionMessage {
+        //     role: "system".to_string(),
+        //     content: format!(
+        //         "Updated date and time, use the following timestamp for this reply: {}",
+        //         time
+        //     ),
+        // });
 
         context
     }
