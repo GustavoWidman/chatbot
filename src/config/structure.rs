@@ -13,6 +13,7 @@ pub struct ChatBotConfigInner {
     pub llm: LLMConfig,
     pub prompt: SystemPromptBuilder,
     pub freewill: FreewillConfig,
+    pub retrieval: RetrievalConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -33,6 +34,16 @@ pub struct LLMConfig {
     pub api_key: String,
     pub model: String,
     pub custom_url: Option<String>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f64>,
+    pub top_p: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct RetrievalConfig {
+    pub gemini_key: String,
+    pub model: String,
+    pub prompt: String,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
