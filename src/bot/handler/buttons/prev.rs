@@ -16,7 +16,7 @@ impl Handler {
         let engine = user_map.entry(component.user.clone()).or_insert_with({
             data.config.write().await.update();
             let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config)
+            || chat::engine::ChatEngine::new(config, component.user.id)
         });
 
         let (message, can_go_back) = engine.go_back().unwrap();

@@ -44,7 +44,12 @@ pub struct RetrievalConfig {
     pub gemini_key: String,
     pub model: String,
     pub prompt: String,
-    pub max_tokens: Option<u32>,
+    pub vector_size: Option<u64>,
+    pub similarity_threshold: Option<f32>,
+    pub qdrant_host: String,
+    pub qdrant_port: Option<u16>,
+    pub qdrant_https: Option<bool>,
+    pub max_tokens: Option<i64>,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
 }

@@ -86,15 +86,16 @@ impl Handler {
         http: Arc<Http>,
     ) -> bool {
         println!("freewilling");
+        let user_id = user.id;
 
         let mut user_map = data.user_map.write().await;
         let engine = user_map.entry(user).or_insert_with({
             data.config.write().await.update();
             let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config)
+            || chat::engine::ChatEngine::new(config, user_id)
         });
 
-        let freewill_context = match engine.freewill_context() {
+        let freewill_context = match engine.freewill_context().await {
             Ok(context) => context,
             Err(why) => {
                 println!("Error generating freewill context: {why:?}");
@@ -128,7 +129,7 @@ impl Handler {
             data.msg_channel.0.send(response.content.clone()).unwrap();
 
             // only change context after we're sure everything is okay
-            engine.add_message(response, msg.id);
+            engine.add_message(response);
 
             Ok(msg)
         }
@@ -158,11 +159,12 @@ impl Handler {
     }
 
     pub async fn should_freewill(data: Arc<InnerData>, user: User) -> bool {
+        let user_id = user.id;
         let mut user_map = data.user_map.write().await;
         let engine = user_map.entry(user).or_insert_with({
             data.config.write().await.update();
             let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config)
+            || chat::engine::ChatEngine::new(config, user_id)
         });
 
         let time_since_last = engine.time_since_last().unwrap_or(0.0);
