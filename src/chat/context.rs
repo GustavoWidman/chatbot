@@ -1,15 +1,17 @@
 use std::vec;
 
 use anyhow::{Result, anyhow};
-use chrono::Duration;
 use genai::chat::ChatMessage;
-use serenity::all::MessageId;
+use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, MessageRole};
+use serenity::all::UserId;
 
-use crate::chat::prompt::SystemPromptBuilder;
+use crate::{
+    archive::retrieval::RetrievalClient, chat::prompt::SystemPromptBuilder,
+    config::structure::RetrievalConfig,
+};
 
 #[derive(Debug, Clone)]
 struct Messages {
-    id: MessageId,
     list: Vec<(CompletionMessage, chrono::DateTime<chrono::Utc>)>,
     selected: usize,
 }
@@ -31,6 +33,25 @@ impl Into<ChatMessage> for CompletionMessage {
     }
 }
 
+impl Into<ChatCompletionMessage> for CompletionMessage {
+    fn into(self) -> ChatCompletionMessage {
+        let role = match self.role.as_str() {
+            "system" => MessageRole::system,
+            "user" => MessageRole::user,
+            "assistant" => MessageRole::assistant,
+            _ => MessageRole::system,
+        };
+
+        chat_completion::ChatCompletionMessage {
+            role,
+            content: chat_completion::Content::Text(self.content),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+}
+
 impl TryInto<ChatMessage> for Messages {
     type Error = anyhow::Error;
 
@@ -45,23 +66,27 @@ impl TryInto<ChatMessage> for Messages {
     }
 }
 
-#[derive(Debug)]
 pub struct ChatContext {
     messages: Vec<Messages>,
     system_prompt: SystemPromptBuilder,
+    archive: RetrievalClient,
 }
 
 impl ChatContext {
-    pub fn new(system_prompt: &SystemPromptBuilder) -> Self {
+    pub fn new(
+        system_prompt: &SystemPromptBuilder,
+        archive_config: &RetrievalConfig,
+        user_id: UserId,
+    ) -> Self {
         Self {
             messages: vec![],
             system_prompt: system_prompt.clone(),
+            archive: RetrievalClient::new(archive_config, user_id),
         }
     }
 
-    pub fn add_message(&mut self, message: CompletionMessage, id: MessageId) {
+    pub fn add_message(&mut self, message: CompletionMessage) {
         let messages = Messages {
-            id,
             list: vec![(message, chrono::Utc::now())],
             selected: 0,
         };
@@ -69,14 +94,11 @@ impl ChatContext {
         self.messages.push(messages);
     }
 
-    pub fn add_user_message(&mut self, message: String, discord_message_id: MessageId) {
-        self.add_message(
-            CompletionMessage {
-                role: "user".to_string(),
-                content: message,
-            },
-            discord_message_id,
-        );
+    pub fn add_user_message(&mut self, message: String) {
+        self.add_message(CompletionMessage {
+            role: "user".to_string(),
+            content: message,
+        });
     }
 
     pub fn regenerate(&mut self, message: CompletionMessage) -> anyhow::Result<()> {
@@ -127,56 +149,59 @@ impl ChatContext {
         }
     }
 
-    pub fn get_context(&self) -> Vec<CompletionMessage> {
-        let mut context = vec![];
-        let (system_prompt, time) = self.system_prompt.clone().build();
-
-        // context.push(CompletionMessage {
-        //     role: "system".to_string(),
-        //     content: system_prompt.to_string(),
-        // });
+    pub async fn get_context(&mut self) -> Vec<CompletionMessage> {
+        let mut ctx = vec![];
 
         // Add the messages
         self.messages.clone().into_iter().for_each(|messages| {
             match messages.list.into_iter().nth(messages.selected) {
                 Some(message) => {
-                    context.push(message.0);
+                    ctx.push(message.0);
                 }
                 None => {}
             }
         });
 
-        // Add the time
-        // context.push(CompletionMessage {
-        //     role: "system".to_string(),
-        //     content: format!(
-        //         "Updated date and time, use the following timestamp for this reply: {}",
-        //         time
-        //     ),
-        // });
+        let long_term_memories = self.archive.recall(ctx.clone()).await;
+
+        let system_prompt = if let Some(ltm) = long_term_memories {
+            self.system_prompt.clone().add_long_term_memories(ltm)
+        } else {
+            self.system_prompt.clone()
+        };
+
+        self.system_prompt = system_prompt.clone();
+
+        let (system_prompt, _) = system_prompt.build();
+
+        let mut context = vec![CompletionMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        }];
+        context.extend(ctx);
 
         context
     }
 
     // gets context but excludes the last message and the user prompt is taken as string-only
-    pub fn get_regen_context(&self) -> Vec<CompletionMessage> {
-        let mut context = self.get_context();
+    pub async fn get_regen_context(&mut self) -> Vec<CompletionMessage> {
+        let mut context = self.get_context().await;
 
         // take off the last two, keep the second to last
         if let Some(pos) = context.iter().rposition(|m| m.role == "assistant") {
             context.remove(pos);
         }
 
-        context.push(CompletionMessage {
-            role: "system".to_string(),
-            content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
-        });
+        // context.push(CompletionMessage {
+        //     role: "system".to_string(),
+        //     content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
+        // });
 
         context
     }
 
-    pub fn freewill_context(&self) -> Result<Vec<CompletionMessage>> {
-        let mut context = self.get_context();
+    pub async fn freewill_context(&mut self) -> Result<Vec<CompletionMessage>> {
+        let mut context = self.get_context().await;
         let last = self
             .messages
             .last()
@@ -227,14 +252,17 @@ impl ChatContext {
             }
         };
 
-        context.push(CompletionMessage {
-            role: "system".to_string(),
-            content: format!("It's been around {} since you last said something, and the user did not respond. Your next response should attempt to pull the user back into the conversation. Please respond once again, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. Your response should only contain the actual response, not your thoughts or anything else.", time_since_last_as_str),
-        });
-        context.push(CompletionMessage {
+        let message = CompletionMessage {
             role: "user".to_string(),
-            content: "...".to_string(),
-        });
+            content: format!(
+                "*it's been around {} since you last said something, and the user did not respond. your next response should attempt to pull the user back into the conversation. please respond once again, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. your response should only contain the actual response, not your thoughts or anything else.*\n\n\"...\"",
+                time_since_last_as_str
+            ),
+        };
+
+        self.add_message(message.clone());
+
+        context.push(message);
 
         Ok(context)
     }

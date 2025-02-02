@@ -25,15 +25,13 @@ impl Handler {
         let engine = user_map.entry(msg.author.clone()).or_insert_with({
             data.config.write().await.update();
             let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config)
+            || chat::engine::ChatEngine::new(config, msg.author.id)
         });
 
-        let m = match engine
-            .user_prompt(Some(msg.content.clone()), engine.get_context())
-            .await
-        {
+        let context = engine.get_context().await;
+        let m = match engine.user_prompt(Some(msg.content.clone()), context).await {
             Ok(response) => {
-                engine.add_user_message(msg.content, msg.id);
+                engine.add_user_message(msg.content);
 
                 let message = CreateMessage::new()
                     .content(response.content.clone())
@@ -58,7 +56,7 @@ impl Handler {
 
                 match msg {
                     Ok(msg) => {
-                        engine.add_message(response, msg.id);
+                        engine.add_message(response);
                         Ok(msg)
                     }
                     Err(why) => {

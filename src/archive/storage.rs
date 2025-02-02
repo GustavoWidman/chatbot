@@ -1,95 +1,124 @@
-use tantivy::{
-    DateTime, Directory, Index, IndexWriter, ReloadPolicy, Score, collector::TopDocs, doc,
-    query::QueryParser, schema::*, time::OffsetDateTime,
+use std::collections::HashMap;
+
+use qdrant_client::{
+    Payload, Qdrant,
+    qdrant::{
+        CreateCollectionBuilder, Distance, PointStruct, SearchParamsBuilder, SearchPointsBuilder,
+        UpsertPointsBuilder, Value, VectorParamsBuilder,
+    },
 };
+use serde_json::json;
+use serenity::{all::UserId, json};
 use uuid::Uuid;
 
+use crate::config::structure::RetrievalConfig;
+
+pub struct MemorySettings {
+    pub vector_size: u64,
+    pub similarity_threshold: f32,
+}
+
 pub struct MemoryStorage {
-    schema: Schema,
-    index: Index,
+    client: Qdrant,
+    settings: MemorySettings,
 }
 
 impl MemoryStorage {
-    pub fn new() -> Self {
-        // Define schema
-        let mut schema_builder = Schema::builder();
-        let opts = DateOptions::from(INDEXED)
-            .set_stored()
-            .set_fast()
-            .set_precision(tantivy::schema::DateTimePrecision::Seconds);
+    pub fn new(config: &RetrievalConfig) -> Self {
+        let client = Qdrant::from_url(&format!(
+            "http{}://{}:{}",
+            match config.qdrant_https.unwrap_or(false) {
+                true => "s",
+                false => "",
+            },
+            config.qdrant_host,
+            config.qdrant_port.unwrap_or(6334)
+        ))
+        .build()
+        .unwrap();
 
-        let id = schema_builder.add_text_field("id", STRING | STORED);
-        let content = schema_builder.add_text_field("content", TEXT | STORED);
-        let timestamp = schema_builder.add_date_field("timestamp", INDEXED | STORED);
-        let embedding = schema_builder.add_facet_field("embedding", STORED); // For future embedding support
-
-        let schema = schema_builder.build();
-
-        // Create index in memory (for persistence, use a directory)
-        let index = Index::create_in_ram(schema.clone());
-        // let dir = Directory::open_write(&self, path)
-        // let index = Index::open_or_create(Directory::, schema.clone()).unwrap();
-
-        MemoryStorage { schema, index }
+        MemoryStorage {
+            client,
+            settings: MemorySettings {
+                vector_size: config.vector_size.unwrap_or(256),
+                similarity_threshold: config.similarity_threshold.unwrap_or(0.5),
+            },
+        }
     }
 
-    pub fn add_memory(&self, text: &str) -> tantivy::Result<()> {
-        let mut writer: IndexWriter = self.index.writer(50_000_000)?;
+    async fn try_create_collection(&self, user_id: UserId) -> anyhow::Result<String> {
+        let collection_name = format!("chatbot_{}", user_id);
 
-        let id = self.schema.get_field("id").unwrap();
-        let content = self.schema.get_field("content").unwrap();
-        let timestamp = self.schema.get_field("timestamp").unwrap();
+        Ok(
+            match self.client.collection_exists(&collection_name).await? {
+                true => collection_name,
+                false => {
+                    self.client
+                        .create_collection(
+                            CreateCollectionBuilder::new(&collection_name).vectors_config(
+                                VectorParamsBuilder::new(
+                                    self.settings.vector_size,
+                                    Distance::Cosine,
+                                ),
+                            ),
+                        )
+                        .await?;
+                    collection_name
+                }
+            },
+        )
+    }
 
-        let uuid = Uuid::new_v4().to_string();
+    pub async fn store(
+        &self,
+        text: String,
+        embedding: Vec<f32>,
+        user_id: UserId,
+    ) -> anyhow::Result<()> {
+        let collection_name = self.try_create_collection(user_id).await?;
 
-        // writer.add_document(doc!(
-        //     id => uuid,
-        //     content => text,
-        //     timestamp => now
-        // ))?;
+        let points = vec![PointStruct::new(
+            rand::random::<u64>(),
+            embedding,
+            Payload::from(HashMap::from([("memory".to_string(), Value::from(text))])),
+        )];
+        self.client
+            .upsert_points(UpsertPointsBuilder::new(collection_name, points))
+            .await?;
 
-        let mut doc = TantivyDocument::default();
-
-        doc.add_text(id, uuid);
-        doc.add_text(content, text);
-
-        let now = DateTime::from_utc(OffsetDateTime::now_utc());
-        doc.add_date(timestamp, now);
-
-        writer.add_document(doc)?;
-
-        writer.commit()?;
         Ok(())
     }
 
-    pub fn search(&self, query: &str, threshold: Score) -> tantivy::Result<Vec<String>> {
-        let reader = self
-            .index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()?;
+    pub async fn search(
+        &self,
+        embedding: Vec<f32>,
+        user_id: UserId,
+    ) -> anyhow::Result<Vec<String>> {
+        let collection_name = self.try_create_collection(user_id).await?;
 
-        let searcher = reader.searcher();
+        let search_result = self
+            .client
+            .search_points(
+                SearchPointsBuilder::new(collection_name, embedding, 10) // todo set recall limit
+                    // .filter(Filter::all([Condition::matches("bar", 12)]))
+                    .with_payload(true), // .params(SearchParamsBuilder::default().exact(true)),
+            )
+            .await?;
 
-        let content = self.schema.get_field("content").unwrap();
-        let query_parser = QueryParser::for_index(&self.index, vec![content]);
-        let parsed_query = query_parser.parse_query(query)?;
+        Ok(search_result
+            .result
+            .into_iter()
+            .filter_map(|point| {
+                println!("payload: {:?}\nscore: {:?}", point.payload, point.score);
+                if point.score > self.settings.similarity_threshold {
+                    let payload = point.payload;
+                    let memory = payload.get("memory")?.as_str()?;
 
-        let top_docs = searcher.search(&parsed_query, &TopDocs::with_limit(10))?;
-
-        let mut results = Vec::new();
-        for (score, doc_address) in top_docs {
-            if score >= threshold {
-                let retrieved_doc: TantivyDocument = searcher.doc(doc_address)?;
-                if let Some(content) = retrieved_doc.get_first(content) {
-                    if let Some(text) = content.as_str() {
-                        println!("retrieved {} with score {}", text, score);
-                        results.push(text.to_string());
-                    }
+                    Some(memory.to_string())
+                } else {
+                    None
                 }
-            }
-        }
-
-        Ok(results)
+            })
+            .collect())
     }
 }

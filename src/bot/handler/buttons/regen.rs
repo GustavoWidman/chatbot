@@ -16,10 +16,10 @@ impl Handler {
         let engine = user_map.entry(component.user.clone()).or_insert_with({
             data.config.write().await.update();
             let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config)
+            || chat::engine::ChatEngine::new(config, component.user.id)
         });
 
-        let regen_context = engine.get_regen_context();
+        let regen_context = engine.get_regen_context().await;
 
         let old_content = component.message.content.clone();
         component

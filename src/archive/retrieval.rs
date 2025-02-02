@@ -1,50 +1,55 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::format};
 
-use crate::config::structure::RetrievalConfig;
+use crate::{chat::CompletionMessage, config::structure::RetrievalConfig};
 
-use anyhow::Result;
-use genai::{
-    Client, ClientConfig, ModelIden, ServiceTarget,
-    adapter::AdapterKind,
-    chat::{ChatMessage, ChatOptions, ChatRequest, Tool},
-    resolver::{AuthData, AuthResolver, Endpoint, ModelMapper, ServiceTargetResolver},
-};
+use genai::chat::ChatMessage;
 use openai_api_rs::v1::{
     api::OpenAIClient,
-    chat_completion::{self, ChatCompletionRequest},
+    chat_completion::{self, ChatCompletionRequest, Tool},
+    embedding::EmbeddingRequest,
     types,
 };
-use regex::Regex;
-// use rig::providers::openai;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use serenity::futures::StreamExt;
+use serenity::all::UserId;
 
 use super::storage::MemoryStorage;
 
 pub struct RetrievalSettings {
+    pub model: String,
     pub temperature: f64,
     pub top_p: f64,
-    pub max_res_tokens: u32,
+    pub max_res_tokens: i64,
+    pub vector_size: i32,
+    pub user_id: UserId,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Query {
+    query: String,
 }
 
 pub struct RetrievalClient {
-    pub client: Client,
-    pub settings: ChatOptions,
-    pub prompt: String,
+    pub client: OpenAIClient,
+    pub settings: RetrievalSettings,
     pub storage: MemoryStorage,
-    pub model: String,
+    pub tool: Tool,
+    // pub prompt: String,
+    // pub storage: MemoryStorage,
 }
 
 impl RetrievalClient {
-    pub async fn new(config: &RetrievalConfig) -> anyhow::Result<()> {
+    pub fn new(config: &RetrievalConfig, user_id: UserId) -> Self {
         let api_key = config.gemini_key.clone();
+
         let client = OpenAIClient::builder()
-            // .with_endpoint("https://generativelanguage.googleapis.com/v1beta/openai")
-            .with_endpoint("http://127.0.0.1:8080")
+            .with_endpoint("https://generativelanguage.googleapis.com/v1beta/openai")
+            // .with_endpoint("http://127.0.0.1:8080")
+            // .with_proxy("http://127.0.0.1:8080")
             .with_api_key(api_key.clone())
             .build()
-            .map_err(|e| anyhow::anyhow!("Failed to build client: {:?}", e))?;
+            // unwrap is safe because we've set both api key and url,
+            // so it's not searching the values in the env
+            .unwrap();
 
         let mut properties = HashMap::new();
         properties.insert(
@@ -56,187 +61,159 @@ impl RetrievalClient {
             }),
         );
 
-        let req = ChatCompletionRequest::new(config.model.clone(), vec![
-            chat_completion::ChatCompletionMessage {
-                role: chat_completion::MessageRole::user,
-                content: chat_completion::Content::Text(String::from(
-                    "What did I tell you about my shirt?",
-                )),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ])
-        .temperature(0.0)
-        .top_p(1.0)
-        .tools(vec![chat_completion::Tool {
+        let tool = chat_completion::Tool {
             r#type: chat_completion::ToolType::Function,
             function: types::Function {
                 name: String::from("memory_recall"),
-                description: Some(String::from("Recall a memory from the memory archive")),
+                description: Some(String::from(
+                    "Searches long-term memory on a vector database (qdrant) using cosine similarity. Used for recalling facts, user preferences, or historical context. Always specify both query and threshold. If you believe no memory has to be recalled, do not specify a query. The query should be similar to how you would look up things in a search engine, for example: 'shirt color' or 'favorite movie'. The query should be a phrase, not a sentence, you aren't asking the database, you're querying it.",
+                )),
                 parameters: types::FunctionParameters {
                     schema_type: types::JSONSchemaType::Object,
                     properties: Some(properties),
-                    required: Some(vec![String::from("query")]),
+                    // required: Some(vec![String::from("query")]),
+                    required: None,
                 },
             },
-        }])
-        .tool_choice(chat_completion::ToolChoiceType::Auto);
+        };
 
-        // debug request json
-        let serialized = serde_json::to_string(&req).unwrap();
-        println!("{}", serialized);
-
-        let result = client.chat_completion(req).await.map_err(|e| {
-            println!("error: {:?}", e);
-            anyhow::anyhow!("error")
-        })?;
-
-        match result.choices[0].finish_reason {
-            None => {
-                println!("No finish_reason");
-                println!("{:?}", result.choices[0].message.content);
-            }
-            Some(chat_completion::FinishReason::stop) => {
-                println!("Stop");
-                println!("{:?}", result.choices[0].message.content);
-            }
-            Some(chat_completion::FinishReason::length) => {
-                println!("Length");
-            }
-            Some(chat_completion::FinishReason::tool_calls) => {
-                println!("ToolCalls");
-                #[derive(Deserialize, Serialize)]
-                struct MemoryCall {
-                    query: String,
-                }
-                let tool_calls = result.choices[0].message.tool_calls.as_ref().unwrap();
-                for tool_call in tool_calls {
-                    let name = tool_call.function.name.clone().unwrap();
-                    let arguments = tool_call.function.arguments.clone().unwrap();
-                    let memory_call: MemoryCall = serde_json::from_str(&arguments)?;
-                    let query = memory_call.query;
-                    if name == "memory_recall" {
-                        println!("recalling: {:?}", query);
-                    }
-                }
-            }
-            Some(chat_completion::FinishReason::content_filter) => {
-                println!("ContentFilter");
-            }
-            Some(chat_completion::FinishReason::null) => {
-                println!("Null");
-            }
+        Self {
+            client,
+            settings: RetrievalSettings {
+                model: config.model.clone(),
+                temperature: config.temperature.unwrap_or(1.0),
+                top_p: config.top_p.unwrap_or(0.95),
+                max_res_tokens: config.max_tokens.unwrap_or(1024),
+                vector_size: config.vector_size.unwrap_or(256) as i32,
+                user_id,
+            },
+            storage: MemoryStorage::new(config),
+            tool,
+            // tool,
         }
-
-        Ok(())
     }
 
-    pub async fn recall(&self, last_prompt: ChatMessage) -> Vec<String> {
-        // let system_prompt = "memory_recall"
-        // .with_description(
-        //     "Searches long-term memory using Tantivy query syntax. Use for recalling facts, user preferences, or historical context. Always specify both query and threshold.",
-        // )
-        // .with_schema(json!({
-        //     "type": "object",
-        //     "properties": {
-        //         "query": {
-        //             "type": "string",
-        //             "description": "Tantivy query string using proper field syntax. \
-        //             Examples: 'content:hello', 'content:\"exact phrase\"', \
-        //             'content:(important AND concept)'. MUST prefix with 'content:'.",
-        //             "examples": [
-        //                 "content:birthday",
-        //                 "content:\"dark mode\"~2",
-        //                 "content:(preference OR setting)^2"
-        //             ]
-        //         },
-        //         "threshold": {
-        //             "type": "number",
-        //             "minimum": 0.0,
-        //             "maximum": 1.0,
-        //             "description": "Similarity score cutoff (0.1=loose, 0.5=strict). \
-        //             Use lower values for fuzzy matches, higher for exact recalls.",
-        //             "default": 0.3
-        //         }
-        //     },
-        //     "required": ["query", "threshold"]
-        // }));
-        let system_prompt = ChatMessage::system(self.prompt.clone());
-        let context = vec![system_prompt, last_prompt];
+    async fn embed(&self, context: String) -> anyhow::Result<Vec<f32>> {
+        // text-embedding-004
 
-        // old debug code
-        // for message in context.iter() {
-        //     match message.role {
-        //         ChatRole::System => {}
-        //         _ => {
-        //             println!("{:?}", message);
-        //         }
-        //     }
-        // }
+        let mut req = EmbeddingRequest::new("text-embedding-004".to_string(), vec![context]);
+        req.dimensions = Some(self.settings.vector_size);
 
-        let request = ChatRequest::new(context);
+        let result = self.client.embedding(req).await?;
 
-        println!("there is a request");
+        Ok(result
+            .data
+            .into_iter()
+            .next()
+            .ok_or(anyhow::anyhow!("No embedding"))?
+            .embedding)
+    }
 
-        let response = self
+    async fn search(&self, query: String) -> anyhow::Result<Vec<String>> {
+        let embedding = self.embed(query).await?;
+
+        self.storage.search(embedding, self.settings.user_id).await
+    }
+
+    pub async fn store(&self, context: Vec<CompletionMessage>) -> anyhow::Result<()> {
+        let summary = self.summarize(context.clone()).await?;
+
+        println!("summary: {}", summary);
+
+        let embedding = self.embed(summary.clone()).await?;
+
+        self.storage
+            .store(summary, embedding, self.settings.user_id)
+            .await
+    }
+
+    pub async fn recall(&self, context: Vec<CompletionMessage>) -> Option<Vec<String>> {
+        let mut ctx = vec![CompletionMessage {
+            role: "system".to_string(),
+            content: "You are a assistant that can recall memories from long-term memory. You can only recall memories that are relevant to the current conversation. You cannot recall memories that are irrelevant to the current conversation. If you believe no memory has to be recalled, do not specify a query, simply return an empty field. If you believe a memory has to be recalled, specify a query. If you believe a memory has to be recalled, but do not know how to properly query it at the moment, do not specify a query. Attempt to recall memories that are long-termed (like events, people, places, etc.). Do not recall memories that are short-termed (like user input, current state of mind, etc.).".to_string(),
+        }];
+
+        ctx.extend(
+            context
+                .into_iter()
+                .filter(|msg| msg.role != "system")
+                .collect::<Vec<_>>(),
+        );
+
+        let req = ChatCompletionRequest::new(
+            self.settings.model.clone(),
+            ctx.into_iter().map(|msg| msg.into()).collect(),
+        )
+        .tools(vec![self.tool.clone()])
+        // .max_tokens(1)
+        .temperature(0.0)
+        .top_p(0.95)
+        .tool_choice(chat_completion::ToolChoiceType::Required);
+
+        let result = self
             .client
-            .exec_chat(&self.model, request, Some(&self.settings))
-            .await;
+            .chat_completion(req)
+            .await
+            .map_err(|e| {
+                println!("error: {:?}", e);
+                e
+            })
+            .ok()?;
 
-        println!("recall result: {:?}", response);
+        let first_choice = result.choices.into_iter().next()?;
 
-        let msg = response
-            .unwrap()
-            .content_text_into_string()
-            .ok_or(anyhow::anyhow!("No content"))
-            .unwrap();
+        if let Some(tool_calls) = first_choice.message.tool_calls {
+            println!("tool calls: {:?}", tool_calls);
 
-        println!("there is content");
+            for tool_call in tool_calls {
+                if tool_call.function.name == Some("memory_recall".to_owned()) {
+                    let arguments = tool_call.function.arguments?;
+                    let query: String = serde_json::from_str::<Query>(&arguments).ok()?.query;
 
-        println!("Message: {}", msg);
+                    return self.search(query).await.ok();
+                }
+            }
+        };
 
-        let result = self.storage.search(&msg, 0.3).unwrap();
-
-        println!("recall result: {:?}", result);
-
-        todo!()
+        None
     }
 
-    // pub async fn summarize(&self, mut context: Vec<ChatMessage>) -> Result<CompletionMessage> {
-    //     context.retain(|message| {
-    //         if let ChatRole::System = message.role {
-    //             false
-    //         } else {
-    //             println!("{:?}", message);
-    //             true
-    //         }
-    //     });
+    async fn summarize(&self, context: Vec<CompletionMessage>) -> anyhow::Result<String> {
+        let mut ctx = vec![CompletionMessage {
+            role: "system".to_string(),
+            content: "You are a assistant that will take the user's input and summarize it to it's best, putting important discoveries/revelations and new information into bullet points. You will not repeat yourself, and you will not use the same bullet points more than once. The summarized input will be inserted into a long term memory storage, so only note the information you believe to be relevant to be eventually recalled in future conversations (new interests, new information, personality revelations, etc.). Do not state things that are short-termed (the user is going to the bathroom, the user is crying). Only state things that are long-termed (the user likes bananas, the user asked you out on a date).".to_string(),
+        }, CompletionMessage {
+            role: "user".to_string(),
+            content: context
+                .into_iter()
+                .filter(|msg| msg.role != "system")
+                .map(|msg| format!("{}: {}\n---\n", msg.role, msg.content))
+                .collect::<Vec<String>>()
+                .join("")
+                .trim_end_matches("\n---\n")
+                .to_owned(),
+        }];
 
-    //     let request = ChatRequest::new(context);
+        let req = ChatCompletionRequest::new(
+            self.settings.model.clone(),
+            ctx.into_iter().map(|msg| msg.into()).collect(),
+        )
+        .tools(vec![self.tool.clone()])
+        // .max_tokens(1)
+        .temperature(0.0)
+        .top_p(0.95);
 
-    //     println!("there is a request");
+        let result = self.client.chat_completion(req).await?;
 
-    //     let response = self
-    //         .client
-    //         .exec_chat(&self.model, request, Some(&self.settings))
-    //         .await?;
+        let first_choice = result
+            .choices
+            .into_iter()
+            .next()
+            .ok_or(anyhow::anyhow!("No choices found in response"))?;
 
-    //     println!("there is a response");
-
-    //     let msg = response
-    //         .content_text_into_string()
-    //         .ok_or(anyhow::anyhow!("No content"))?;
-
-    //     println!("there is content");
-
-    //     let regex = Regex::new(r"```.*").unwrap();
-    //     let content = regex.replace_all(&msg, "").to_string();
-
-    //     // tokio::time::sleep(std::time::Duration::from_secs(5)).await; // simulate API call latency
-    //     Ok(CompletionMessage {
-    //         role: "assistant".to_string(),
-    //         content,
-    //     })
-    // }
+        return first_choice
+            .message
+            .content
+            .ok_or(anyhow::anyhow!("No content"));
+    }
 }

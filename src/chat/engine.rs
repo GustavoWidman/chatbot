@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use anyhow::Result;
 use genai::chat::ChatMessage;
+use serenity::all::UserId;
 
 use crate::config::store::ChatBotConfig;
 
@@ -16,9 +17,9 @@ pub struct ChatEngine {
 }
 
 impl ChatEngine {
-    pub fn new(config: ChatBotConfig) -> Self {
+    pub fn new(config: ChatBotConfig, user_id: UserId) -> Self {
         let client = ChatClient::new(&config.llm);
-        let context = ChatContext::new(&config.prompt);
+        let context = ChatContext::new(&config.prompt, &config.retrieval, user_id);
 
         Self { client, context }
     }
@@ -26,17 +27,21 @@ impl ChatEngine {
     pub async fn user_prompt(
         &mut self,
         prompt: Option<String>,
-        context: Vec<CompletionMessage>,
+        mut context: Vec<CompletionMessage>,
     ) -> anyhow::Result<CompletionMessage> {
         let retries = 5;
+
+        if let Some(prompt) = prompt {
+            context.push(CompletionMessage {
+                role: "user".to_string(),
+                content: prompt,
+            });
+        }
 
         for i in 0..retries {
             let response = self
                 .client
-                .prompt(
-                    prompt.clone(),
-                    context.clone().into_iter().map(|m| m.into()).collect(),
-                )
+                .prompt(context.clone().into_iter().map(|m| m.into()).collect())
                 .await?;
             if response.content.len() > 2000 {
                 println!("too big, retry #{i}");

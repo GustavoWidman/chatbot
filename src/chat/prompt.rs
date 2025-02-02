@@ -9,8 +9,13 @@ pub struct SystemPrompt {
     builder: SystemPromptBuilder,
 }
 impl SystemPrompt {
-    pub fn builder(chatbot_name: String, user_name: String, about: String) -> SystemPromptBuilder {
-        SystemPromptBuilder::new(chatbot_name, user_name, about)
+    pub fn builder(
+        chatbot_name: String,
+        user_name: String,
+        about: String,
+        max_ltm: usize,
+    ) -> SystemPromptBuilder {
+        SystemPromptBuilder::new(chatbot_name, user_name, about, max_ltm)
     }
 
     pub fn new(builder: SystemPromptBuilder) -> Self {
@@ -159,22 +164,24 @@ Your job is to respond to last message from {}. You can use other messages for c
         }
 
         if let Some(long_term_memory) = builder.long_term_memory {
-            prompt.push_str(&format!(
-                "## Long Term Memory
+            if !long_term_memory.is_empty() {
+                prompt.push_str(&format!(
+                    "## Long Term Memory
 {}
 
 ",
-                long_term_memory
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, long_term_memory)| format!(
-                        "### Memory {}\n{}",
-                        i + 1,
-                        long_term_memory
-                    ))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ));
+                    long_term_memory
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, long_term_memory)| format!(
+                            "### Memory {}\n```memory\n{}\n```\n",
+                            i + 1,
+                            long_term_memory
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                ));
+            }
         }
 
         if let Some(user_about) = builder.user_about {
@@ -231,6 +238,7 @@ pub struct SystemPromptBuilder {
     chatbot_name: String,
     user_name: String,
     about: String,
+    max_ltm: usize,
     tone: Option<String>,
     age: Option<String>,
     likes: Option<Vec<String>>,
@@ -239,16 +247,20 @@ pub struct SystemPromptBuilder {
     conversation_goals: Option<Vec<String>>,
     conversational_examples: Option<Vec<String>>,
     context: Option<Vec<String>>,
+
+    #[serde(skip)]
     long_term_memory: Option<Vec<String>>,
+
     user_about: Option<String>,
     timezone: Option<Tz>,
 }
 impl SystemPromptBuilder {
-    pub fn new(chatbot_name: String, user_name: String, about: String) -> Self {
+    pub fn new(chatbot_name: String, user_name: String, about: String, max_ltm: usize) -> Self {
         Self {
             chatbot_name,
             user_name,
             about,
+            max_ltm,
             tone: None,
             age: None,
             likes: None,
@@ -364,7 +376,14 @@ impl SystemPromptBuilder {
     }
 
     pub fn add_long_term_memory(mut self, new_long_term_memory: String) -> Self {
+        // not my best work lol
+
         if let Some(long_term_memory) = &mut self.long_term_memory {
+            if long_term_memory.len() + 1 > self.max_ltm {
+                // remove the oldest memory (first to be added)
+                long_term_memory.remove(0);
+            }
+
             long_term_memory.push(new_long_term_memory);
         } else {
             self.long_term_memory = Some(vec![new_long_term_memory]);
@@ -373,6 +392,18 @@ impl SystemPromptBuilder {
     }
     pub fn add_long_term_memories(mut self, new_long_term_memory: Vec<String>) -> Self {
         if let Some(long_term_memory) = &mut self.long_term_memory {
+            // if we recall more than the max ltm, don't add anything (should'nt really happen)
+            if long_term_memory.len() > self.max_ltm {
+                return self;
+            }
+
+            // if we recall and appending will max out the ltm, as many old memories as we can to fit the newer memories (rolling)
+            let new_len = new_long_term_memory.len() + long_term_memory.len();
+            if new_len > self.max_ltm {
+                // remove the oldest memory (first to be added)
+                long_term_memory.drain(0..new_len - self.max_ltm);
+            }
+
             long_term_memory.extend(new_long_term_memory);
         } else {
             self.long_term_memory = Some(new_long_term_memory);

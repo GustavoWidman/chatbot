@@ -2,13 +2,11 @@ use anyhow::Result;
 use genai::{
     Client, ClientConfig, ModelIden, ServiceTarget,
     adapter::AdapterKind,
-    chat::{ChatMessage, ChatOptions, ChatRequest, Tool},
+    chat::{ChatMessage, ChatOptions, ChatRequest},
     resolver::{AuthData, AuthResolver, Endpoint, ModelMapper, ServiceTargetResolver},
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use serenity::futures::StreamExt;
 
 use crate::config::structure::LLMConfig;
 
@@ -121,18 +119,7 @@ impl ChatClient {
         }
     }
 
-    pub async fn prompt(
-        &self,
-        prompt: Option<String>,
-        mut context: Vec<ChatMessage>,
-    ) -> Result<CompletionMessage> {
-        // old debug code
-        // println!("temp: {:?}", self.settings.temperature);
-
-        if let Some(prompt) = prompt {
-            context.push(ChatMessage::user(prompt));
-        }
-
+    pub async fn prompt(&self, mut context: Vec<ChatMessage>) -> Result<CompletionMessage> {
         // old debug code
         // for message in context.iter() {
         //     match message.role {
@@ -143,7 +130,6 @@ impl ChatClient {
         //     }
         // }
 
-        // let request = ChatRequest::new(context).append_tool(self.memory_tool.clone());
         let request = ChatRequest::new(context);
 
         println!("there is a request");
