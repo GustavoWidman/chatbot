@@ -162,13 +162,16 @@ impl ChatContext {
             }
         });
 
-        let long_term_memories = self.archive.recall(ctx.clone()).await;
+        // todo re-enable ltm once we have it working
+        // let long_term_memories = self.archive.recall(ctx.clone()).await;
 
-        let system_prompt = if let Some(ltm) = long_term_memories {
-            self.system_prompt.clone().add_long_term_memories(ltm)
-        } else {
-            self.system_prompt.clone()
-        };
+        // let system_prompt = if let Some(ltm) = long_term_memories {
+        //     self.system_prompt.clone().add_long_term_memories(ltm)
+        // } else {
+        //     self.system_prompt.clone()
+        // };
+
+        let system_prompt = self.system_prompt.clone();
 
         self.system_prompt = system_prompt.clone();
 
