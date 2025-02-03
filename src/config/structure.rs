@@ -43,7 +43,6 @@ pub struct LLMConfig {
 pub struct RetrievalConfig {
     pub gemini_key: String,
     pub model: String,
-    pub prompt: String,
     pub vector_size: Option<u64>,
     pub similarity_threshold: Option<f32>,
     pub qdrant_host: String,

@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
 use qdrant_client::{
-    Payload, Qdrant,
     qdrant::{
         CreateCollectionBuilder, Distance, PointStruct, SearchParamsBuilder, SearchPointsBuilder,
         UpsertPointsBuilder, Value, VectorParamsBuilder,
     },
+    Payload, Qdrant,
 };
 use serde_json::json;
 use serenity::{all::UserId, json};
-use uuid::Uuid;
 
 use crate::config::structure::RetrievalConfig;
 

@@ -11,6 +11,12 @@ services:
             - ./qdrant/snapshots:/qdrant/snapshots
             - ./qdrant/config:/qdrant/config
 
-    # TODO
-    # chatbot:
-    #     build: .
+    chatbot:
+        build: .
+        image: chatbot
+        container_name: chatbot
+        restart: unless-stopped
+        volumes:
+            - type: bind
+              source: ./config.toml
+              target: /config.toml
