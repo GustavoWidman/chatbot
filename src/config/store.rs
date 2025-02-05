@@ -15,7 +15,6 @@ pub struct ChatBotConfig {
 
 impl ChatBotConfig {
     pub fn read(path: PathBuf) -> Result<Self, anyhow::Error> {
-        // resolve .syncr from given dir if its a dir, if its not then we leave it.
         let path = match path.is_dir() {
             true => path.join("config.toml"),
             false => path,
@@ -39,10 +38,6 @@ impl ChatBotConfig {
         })
     }
 
-    pub fn as_ref(&self) -> &ChatBotConfigTOML {
-        &self.cached
-    }
-
     pub fn update(&mut self) -> bool {
         let new = Self::read(self.path.clone()).unwrap();
 
@@ -53,10 +48,6 @@ impl ChatBotConfig {
                 true
             }
         }
-    }
-
-    pub fn as_mut_ref(&mut self) -> &mut ChatBotConfigTOML {
-        &mut self.cached
     }
 
     fn new(path: PathBuf) -> Result<Self, anyhow::Error> {
