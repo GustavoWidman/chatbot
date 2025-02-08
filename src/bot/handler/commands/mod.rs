@@ -4,15 +4,20 @@ use serenity::all::{Framework, User};
 
 use tokio::{
     sync::{
-        RwLock,
         broadcast::{Receiver, Sender},
+        RwLock,
     },
     task::JoinHandle,
 };
 
 use crate::{chat::engine::ChatEngine, config::store::ChatBotConfig};
 
+type Error = Box<dyn std::error::Error + Send + Sync>;
+type Context<'a> = poise::Context<'a, Data, Error>;
+
 mod clear;
+mod config;
+mod reload;
 
 pub struct InnerData {
     pub config: RwLock<ChatBotConfig>,
@@ -34,7 +39,7 @@ pub async fn framework(config: ChatBotConfig) -> (impl Framework + 'static, Data
     (
         poise::Framework::builder()
             .options(poise::FrameworkOptions {
-                commands: vec![clear::clear()],
+                commands: vec![clear::clear(), reload::reload(), config::config()],
                 ..Default::default()
             })
             .setup(move |ctx, _ready, framework| {

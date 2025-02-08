@@ -421,7 +421,7 @@ impl SystemPromptBuilder {
         self
     }
 
-    pub fn build(mut self) -> (SystemPrompt, String) {
+    pub fn build(mut self, last_message_time: chrono::DateTime<chrono::Utc>) -> SystemPrompt {
         let time = if let Some(timezone) = self.timezone {
             chrono::Utc::now()
                 .with_timezone(&timezone)
@@ -431,11 +431,41 @@ impl SystemPromptBuilder {
         }
         .to_string();
 
+        let time_since = last_message_time.signed_duration_since(chrono::Utc::now());
+
+        let time_since = match time_since.num_seconds() {
+            0..=59 => {
+                let second_suffix = if time_since.num_seconds() > 1 {
+                    "s"
+                } else {
+                    ""
+                };
+                format!("{} second{}", time_since.num_seconds(), second_suffix)
+            }
+            60..=3599 => {
+                let minute_suffix = if time_since.num_minutes() > 1 {
+                    "s"
+                } else {
+                    ""
+                };
+                format!("{} minute{}", time_since.num_minutes(), minute_suffix)
+            }
+            3600..=86399 => {
+                let hour_suffix = if time_since.num_hours() > 1 { "s" } else { "" };
+                format!("{} hour{}", time_since.num_hours(), hour_suffix)
+            }
+            _ => {
+                let day_suffix = if time_since.num_days() > 1 { "s" } else { "" };
+                format!("{} day{}", time_since.num_days(), day_suffix)
+            }
+        };
+
         if let Some(tone) = self.tone {
             self.tone = Some(
                 tone.replace("{user}", &self.user_name)
                     .replace("{bot}", &self.chatbot_name)
-                    .replace("{time}", &time),
+                    .replace("{time}", &time)
+                    .replace("{time_since}", &time_since),
             );
         }
 
@@ -443,7 +473,8 @@ impl SystemPromptBuilder {
             self.age = Some(
                 age.replace("{user}", &self.user_name)
                     .replace("{bot}", &self.chatbot_name)
-                    .replace("{time}", &time),
+                    .replace("{time}", &time)
+                    .replace("{time_since}", &time_since),
             );
         }
 
@@ -455,6 +486,7 @@ impl SystemPromptBuilder {
                         like.replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
                             .replace("{time}", &time)
+                            .replace("{time_since}", &time_since)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -468,6 +500,7 @@ impl SystemPromptBuilder {
                         like.replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
                             .replace("{time}", &time)
+                            .replace("{time_since}", &time_since)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -478,7 +511,8 @@ impl SystemPromptBuilder {
                 history
                     .replace("{user}", &self.user_name)
                     .replace("{bot}", &self.chatbot_name)
-                    .replace("{time}", &time),
+                    .replace("{time}", &time)
+                    .replace("{time_since}", &time_since),
             );
         }
 
@@ -490,6 +524,7 @@ impl SystemPromptBuilder {
                         like.replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
                             .replace("{time}", &time)
+                            .replace("{time_since}", &time_since)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -505,6 +540,7 @@ impl SystemPromptBuilder {
                             .replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
                             .replace("{time}", &time)
+                            .replace("{time_since}", &time_since)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -520,6 +556,7 @@ impl SystemPromptBuilder {
                             .replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
                             .replace("{time}", &time)
+                            .replace("{time_since}", &time_since)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -535,6 +572,7 @@ impl SystemPromptBuilder {
                             .replace("{user}", &self.user_name)
                             .replace("{bot}", &self.chatbot_name)
                             .replace("{time}", &time)
+                            .replace("{time_since}", &time_since)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -545,10 +583,11 @@ impl SystemPromptBuilder {
                 user_about
                     .replace("{user}", &self.user_name)
                     .replace("{bot}", &self.chatbot_name)
-                    .replace("{time}", &time),
+                    .replace("{time}", &time)
+                    .replace("{time_since}", &time_since),
             );
         }
 
-        (SystemPrompt::new(self), time)
+        SystemPrompt::new(self)
     }
 }

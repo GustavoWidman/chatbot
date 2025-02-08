@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rand::{Rng, rngs::StdRng, thread_rng};
+use rand::{rngs::StdRng, Rng};
 use serenity::all::{
     CacheHttp, ChannelId, Context, CreateButton, CreateMessage, EditMessage, Http, Message, User,
 };

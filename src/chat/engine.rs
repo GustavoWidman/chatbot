@@ -8,7 +8,7 @@ use crate::config::store::ChatBotConfig;
 
 use super::{
     client::ChatClient,
-    context::{ChatContext, CompletionMessage},
+    context::{self, ChatContext, CompletionMessage},
 };
 
 pub struct ChatEngine {
@@ -22,6 +22,28 @@ impl ChatEngine {
         let context = ChatContext::new(&config.prompt, &config.retrieval, user_id);
 
         Self { client, context }
+    }
+
+    // initializes with
+    pub fn new_with(
+        config: ChatBotConfig,
+        user_id: UserId,
+        client: Option<ChatClient>,
+        context: Option<ChatContext>,
+    ) -> Self {
+        let client = client.unwrap_or(ChatClient::new(&config.llm));
+        let context =
+            context.unwrap_or(ChatContext::new(&config.prompt, &config.retrieval, user_id));
+
+        Self { client, context }
+    }
+
+    pub fn into_context(self) -> ChatContext {
+        self.context
+    }
+
+    pub fn into_client(self) -> ChatClient {
+        self.client
     }
 
     pub async fn user_prompt(

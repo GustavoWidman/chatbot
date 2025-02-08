@@ -1,6 +1,6 @@
 use std::vec;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use genai::chat::ChatMessage;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, MessageRole};
 use serenity::all::UserId;
@@ -156,11 +156,13 @@ impl ChatContext {
         self.messages.clone().into_iter().for_each(|messages| {
             match messages.list.into_iter().nth(messages.selected) {
                 Some(message) => {
-                    ctx.push(message.0);
+                    ctx.push(message);
                 }
                 None => {}
             }
         });
+
+        let last_message_time = ctx.last().map(|m| m.1).unwrap_or(chrono::Utc::now());
 
         // todo re-enable ltm once we have it working
         // let long_term_memories = self.archive.recall(ctx.clone()).await;
@@ -170,18 +172,17 @@ impl ChatContext {
         // } else {
         //     self.system_prompt.clone()
         // };
-
         let system_prompt = self.system_prompt.clone();
 
         self.system_prompt = system_prompt.clone();
 
-        let (system_prompt, _) = system_prompt.build();
+        let system_prompt = system_prompt.build(last_message_time);
 
         let mut context = vec![CompletionMessage {
             role: "system".to_string(),
             content: system_prompt.to_string(),
         }];
-        context.extend(ctx);
+        context.extend(ctx.into_iter().map(|m| m.0));
 
         context
     }

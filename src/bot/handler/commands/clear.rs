@@ -1,11 +1,9 @@
+use poise::CreateReply;
+
+use super::{Context, Error};
 use crate::chat;
 
-use super::Data;
-
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
-
-/// Clears the current context window
+/// Clears the current context window and reloads the engine
 #[poise::command(slash_command, prefix_command)]
 pub(super) async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data().clone();
@@ -32,7 +30,12 @@ pub(super) async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         handle.abort();
     }
 
-    ctx.say("wacked!").await?;
+    ctx.send(
+        CreateReply::default()
+            .content("cleared context window and reloaded engine.")
+            .ephemeral(true),
+    )
+    .await?;
 
     Ok(())
 }

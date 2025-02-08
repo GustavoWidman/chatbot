@@ -1,9 +1,9 @@
 use anyhow::Result;
 use genai::{
-    Client, ClientConfig, ModelIden, ServiceTarget,
     adapter::AdapterKind,
     chat::{ChatMessage, ChatOptions, ChatRequest},
     resolver::{AuthData, AuthResolver, Endpoint, ModelMapper, ServiceTargetResolver},
+    Client, ClientConfig, ModelIden, ServiceTarget,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -215,6 +215,38 @@ impl Into<AdapterKind> for ChatProvider {
             Self::XAI => AdapterKind::Xai,
             Self::Google => AdapterKind::Gemini,
             Self::Groq => AdapterKind::Groq,
+        }
+    }
+}
+
+impl Into<String> for ChatProvider {
+    fn into(self) -> String {
+        match self {
+            Self::OpenAI => "openai".to_string(),
+            Self::Anthropic => "anthropic".to_string(),
+            Self::Ollama => "ollama".to_string(),
+            Self::DeepSeek => "deepseek".to_string(),
+            Self::XAI => "xai".to_string(),
+            Self::Google => "google".to_string(),
+            Self::Groq => "groq".to_string(),
+        }
+    }
+}
+
+impl TryFrom<String> for ChatProvider {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
+            "openai" => Ok(Self::OpenAI),
+            "openai-compatible" => Ok(Self::OpenAI),
+            "anthropic" => Ok(Self::Anthropic),
+            "ollama" => Ok(Self::Ollama),
+            "deepseek" => Ok(Self::DeepSeek),
+            "xai" => Ok(Self::XAI),
+            "google" => Ok(Self::Google),
+            "groq" => Ok(Self::Groq),
+            _ => Err(anyhow::anyhow!("Invalid provider name, please use one of the following: openai, anthropic, ollama, deepseek, xai, google, groq")),
         }
     }
 }
