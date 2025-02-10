@@ -7,12 +7,9 @@ use serde::Deserialize;
 
 use super::{Context, Error};
 use crate::chat;
-use crate::chat::client::ChatProvider;
 
 #[derive(Debug, poise::ChoiceParameter)]
 pub enum KeyChoice {
-    #[name = "LLM Provider"]
-    Provider,
     #[name = "API Key"]
     ApiKey,
     Model,
@@ -28,7 +25,6 @@ pub enum KeyChoice {
 impl Display for KeyChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Provider => write!(f, "LLM Provider"),
             Self::ApiKey => write!(f, "API Key"),
             Self::Model => write!(f, "Model"),
             Self::CustomUrl => write!(f, "Custom URL"),
@@ -57,9 +53,6 @@ pub(super) async fn config(
 
         if let Err(e) = {
             match key {
-                KeyChoice::Provider => {
-                    config.llm.provider = value.clone().try_into()?;
-                }
                 KeyChoice::ApiKey => {
                     config.llm.api_key = value.clone();
                 }
@@ -74,7 +67,7 @@ pub(super) async fn config(
                     }
                 }
                 KeyChoice::MaxTokens => {
-                    config.llm.max_tokens = Some(value.parse::<u32>().map_err(|_| {
+                    config.llm.max_tokens = Some(value.parse::<i64>().map_err(|_| {
                         anyhow::anyhow!("Invalid value \"{value}\", please provide a valid number")
                     })?);
                 }
@@ -114,7 +107,6 @@ pub(super) async fn config(
         let config = data.config.read().await;
 
         let value: Option<String> = match key {
-            KeyChoice::Provider => Some(config.llm.provider.clone().into()),
             KeyChoice::ApiKey => Some(format!("||{}||", config.llm.api_key)),
             KeyChoice::Model => Some(config.llm.model.clone()),
             KeyChoice::CustomUrl => config.llm.custom_url.clone(),

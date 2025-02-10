@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::chat::{client::ChatProvider, prompt::SystemPromptBuilder};
+use crate::chat::prompt::SystemPromptBuilder;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct ChatBotConfigTOML {
@@ -13,7 +13,6 @@ pub struct ChatBotConfigInner {
     pub llm: LLMConfig,
     pub prompt: SystemPromptBuilder,
     pub freewill: FreewillConfig,
-    pub retrieval: RetrievalConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -30,25 +29,16 @@ pub struct FreewillConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct LLMConfig {
-    pub provider: ChatProvider,
     pub api_key: String,
     pub model: String,
+    pub embedding_model: String,
     pub custom_url: Option<String>,
-    pub max_tokens: Option<u32>,
+    pub max_tokens: Option<i64>,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
-pub struct RetrievalConfig {
-    pub gemini_key: String,
-    pub model: String,
     pub vector_size: Option<u64>,
     pub similarity_threshold: Option<f32>,
     pub qdrant_host: String,
     pub qdrant_port: Option<u16>,
     pub qdrant_https: Option<bool>,
-    pub max_tokens: Option<i64>,
-    pub temperature: Option<f64>,
-    pub top_p: Option<f64>,
 }

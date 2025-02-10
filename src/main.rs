@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use archive::retrieval;
 use chat::CompletionMessage;
 use config::store::ChatBotConfig;
 
@@ -22,15 +21,57 @@ async fn main() {
 // #[tokio::main]
 // async fn main() {
 //     // memory archival test
-//     let mut storage = archive::MemoryStorage::new();
-//     storage.add_memory("hello world").unwrap();
-//     storage.add_memory("hello again").unwrap();
-//     storage.add_memory("hello again").unwrap();
+//     let config = ChatBotConfig::read(PathBuf::from("config.toml")).unwrap();
 
-//     println!(
-//         "search results: {:?}",
-//         storage.search("again", 0.0).unwrap()
-//     );
+//     let client = chat::client::ChatClient::new(&config.llm, 1120638385124556870.into());
+
+//     client.store(vec![
+//         CompletionMessage {
+//             role: "user".to_string(),
+//             content: "hey, whats up mei?".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "assistant".to_string(),
+//             content: "nothing much gus, just coding. you?".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "user".to_string(),
+//             content: "same... did i ever tell you about the whole time i almost got expelled?".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "assistant".to_string(),
+//             content: "really? i had no idea gus... what happened?".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "user".to_string(),
+//             content: "so basically, there's this whole check-in system right? you know it? the one where we have to go on the college's website to get the presence for that class, or else it's counted as a missed class?".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "assistant".to_string(),
+//             content: "yea, i know, what's up with it?".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "user".to_string(),
+//             content: "so what i did, was i automated the system by planting a raspberry pi on campus, and then i wrote a script that would check in every class, that way i wouldn't have to go to the website, and it would be automated, so i could just sit back and relax, and not worry about it.".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "assistant".to_string(),
+//             content: "that's a great idea, but i can already see what happened.".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "user".to_string(),
+//             content: "yea... problem is, it wasn't a teacher that found it, but rather a student that i had shared this information with, he reported me to the ethics committee and i almost got expelled because of it, i got a 6 month suspension and a 1 year ban from any and all clubs, including the cybersecurity club, which i was president".to_string(),
+//         },
+//         CompletionMessage {
+//             role: "assistant".to_string(),
+//             content: "oh wow....".to_string(),
+//         },
+//     ], "gus".to_string(), "mei".to_string()).await.unwrap();
+
+//     // println!(
+//     //     "search results: {:?}",
+//     //     client.storage.search("expelled", 0.0).unwrap()
+//     // );
 // }
 
 // #[tokio::main]

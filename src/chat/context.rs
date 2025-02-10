@@ -5,13 +5,10 @@ use genai::chat::ChatMessage;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, MessageRole};
 use serenity::all::UserId;
 
-use crate::{
-    archive::retrieval::RetrievalClient, chat::prompt::SystemPromptBuilder,
-    config::structure::RetrievalConfig,
-};
+use crate::chat::prompt::SystemPromptBuilder;
 
 #[derive(Debug, Clone)]
-struct Messages {
+pub struct Messages {
     list: Vec<(CompletionMessage, chrono::DateTime<chrono::Utc>)>,
     selected: usize,
 }
@@ -39,6 +36,8 @@ impl Into<ChatCompletionMessage> for CompletionMessage {
             "system" => MessageRole::system,
             "user" => MessageRole::user,
             "assistant" => MessageRole::assistant,
+            "tool" => MessageRole::tool, // todo maybe change back to "tool"
+            "function" => MessageRole::function,
             _ => MessageRole::system,
         };
 
@@ -66,22 +65,30 @@ impl TryInto<ChatMessage> for Messages {
     }
 }
 
+impl TryInto<CompletionMessage> for Messages {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<CompletionMessage> {
+        let selected_message = self
+            .list
+            .into_iter()
+            .nth(self.selected)
+            .ok_or(anyhow!("Selected message is out of bounds, wtf?"))?;
+
+        Ok(selected_message.0)
+    }
+}
+
 pub struct ChatContext {
     messages: Vec<Messages>,
-    system_prompt: SystemPromptBuilder,
-    archive: RetrievalClient,
+    pub system_prompt: SystemPromptBuilder,
 }
 
 impl ChatContext {
-    pub fn new(
-        system_prompt: &SystemPromptBuilder,
-        archive_config: &RetrievalConfig,
-        user_id: UserId,
-    ) -> Self {
+    pub fn new(system_prompt: &SystemPromptBuilder) -> Self {
         Self {
             messages: vec![],
             system_prompt: system_prompt.clone(),
-            archive: RetrievalClient::new(archive_config, user_id),
         }
     }
 
@@ -149,7 +156,10 @@ impl ChatContext {
         }
     }
 
-    pub async fn get_context(&mut self) -> Vec<CompletionMessage> {
+    pub async fn get_context(
+        &mut self,
+        recalling: bool,
+    ) -> anyhow::Result<(Vec<CompletionMessage>, Option<Vec<CompletionMessage>>)> {
         let mut ctx = vec![];
 
         // Add the messages
@@ -164,19 +174,26 @@ impl ChatContext {
 
         let last_message_time = ctx.last().map(|m| m.1).unwrap_or(chrono::Utc::now());
 
-        // todo re-enable ltm once we have it working
-        // let long_term_memories = self.archive.recall(ctx.clone()).await;
+        // if the STM is full, we will remove the last 20% of the STM from the beginning (oldest)
 
-        // let system_prompt = if let Some(ltm) = long_term_memories {
-        //     self.system_prompt.clone().add_long_term_memories(ltm)
-        // } else {
-        //     self.system_prompt.clone()
-        // };
-        let system_prompt = self.system_prompt.clone();
+        // 50 stm, 50 max stm
+        let drained = if self.messages.len() >= self.system_prompt.max_stm {
+            let to_remove = self.messages.len() - ((self.system_prompt.max_stm * 4) / 5);
+            println!("context close to or full, draining {to_remove} messages");
+            Some(
+                self.messages
+                    .drain(0..to_remove)
+                    .map(|m| m.try_into())
+                    .collect::<anyhow::Result<Vec<CompletionMessage>>>()?,
+            )
+        } else {
+            None
+        };
 
-        self.system_prompt = system_prompt.clone();
-
-        let system_prompt = system_prompt.build(last_message_time);
+        let system_prompt = self
+            .system_prompt
+            .clone()
+            .build(last_message_time, recalling);
 
         let mut context = vec![CompletionMessage {
             role: "system".to_string(),
@@ -184,12 +201,15 @@ impl ChatContext {
         }];
         context.extend(ctx.into_iter().map(|m| m.0));
 
-        context
+        Ok((context, drained))
     }
 
     // gets context but excludes the last message and the user prompt is taken as string-only
-    pub async fn get_regen_context(&mut self) -> Vec<CompletionMessage> {
-        let mut context = self.get_context().await;
+    pub async fn get_regen_context(
+        &mut self,
+        recalling: bool,
+    ) -> Result<(Vec<CompletionMessage>, Option<Vec<CompletionMessage>>)> {
+        let (mut context, drained) = self.get_context(recalling).await?;
 
         // take off the last two, keep the second to last
         if let Some(pos) = context.iter().rposition(|m| m.role == "assistant") {
@@ -201,11 +221,14 @@ impl ChatContext {
         //     content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
         // });
 
-        context
+        Ok((context, drained))
     }
 
-    pub async fn freewill_context(&mut self) -> Result<Vec<CompletionMessage>> {
-        let mut context = self.get_context().await;
+    pub async fn freewill_context(
+        &mut self,
+        recalling: bool,
+    ) -> Result<(Vec<CompletionMessage>, Option<Vec<CompletionMessage>>)> {
+        let (mut context, drained) = self.get_context(recalling).await?;
         let last = self
             .messages
             .last()
@@ -268,7 +291,7 @@ impl ChatContext {
 
         context.push(message);
 
-        Ok(context)
+        Ok((context, drained))
     }
 
     pub fn time_since_last(&self) -> anyhow::Result<f64> {
@@ -284,5 +307,9 @@ impl ChatContext {
                 .ok_or(anyhow!("Selected message is out of bounds, wtf?"))?
                 .1)
             .num_seconds() as f64)
+    }
+
+    pub fn add_long_term_memories(&mut self, memories: Vec<String>) {
+        self.system_prompt = self.system_prompt.clone().add_long_term_memories(memories);
     }
 }

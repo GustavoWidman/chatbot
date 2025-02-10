@@ -2,7 +2,7 @@ use std::vec;
 
 use serenity::all::{Context, CreateButton, CreateMessage, EditMessage, Message};
 
-use crate::chat;
+use crate::chat::{self, engine::ContextType};
 
 use super::super::Handler;
 
@@ -28,8 +28,10 @@ impl Handler {
             || chat::engine::ChatEngine::new(config, msg.author.id)
         });
 
-        let context = engine.get_context().await;
-        let m = match engine.user_prompt(Some(msg.content.clone()), context).await {
+        let m = match engine
+            .user_prompt(Some(msg.content.clone()), Some(ContextType::User))
+            .await
+        {
             Ok(response) => {
                 engine.add_user_message(msg.content);
 

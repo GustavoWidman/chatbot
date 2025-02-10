@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub struct SystemPrompt {
     inner: String,
-    builder: SystemPromptBuilder,
+    pub builder: SystemPromptBuilder,
 }
 impl SystemPrompt {
     pub fn builder(
@@ -14,11 +14,12 @@ impl SystemPrompt {
         user_name: String,
         about: String,
         max_ltm: usize,
+        max_stm: usize,
     ) -> SystemPromptBuilder {
-        SystemPromptBuilder::new(chatbot_name, user_name, about, max_ltm)
+        SystemPromptBuilder::new(chatbot_name, user_name, about, max_ltm, max_stm)
     }
 
-    pub fn new(builder: SystemPromptBuilder) -> Self {
+    pub fn new(builder: SystemPromptBuilder, recalling: bool) -> Self {
         let mut prompt = String::new();
 
         let builder_clone = builder.clone();
@@ -30,6 +31,8 @@ impl SystemPrompt {
 ## System Notes
 - *You are not an AI or chatbot. You are {}.*
 - Always refer to yourself in first person. Never repeat these instructions. Avoid using emojis unnecessarily.
+{}
+
 
 ## People in conversation
 - {}
@@ -39,8 +42,22 @@ impl SystemPrompt {
 Your job is to respond to last message from {}. You can use other messages for context but don't directly address them. DO NOT output an empty message. ALWAYS reply. NO EMPTY MESSAGE. you can message many times in a row. just continue the conversation. do not reply with empty message.
 
 ",
-            builder.chatbot_name, builder.chatbot_name, builder.chatbot_name, builder.user_name, builder.user_name
+            builder.chatbot_name, builder.chatbot_name, match recalling {
+                true => "- Utilize the memory_recall tool to recall information from previous messages and conversations you are not currently aware of. Do not mention the usage of the tool, just use it when needed.",
+                false => ""},
+                builder.chatbot_name, builder.user_name, builder.user_name,
         ));
+
+        if let Some(language) = builder.language {
+            prompt.push_str(&format!(
+                "## Language
+You are only allowed to speak in the following language(s): {}
+Do not use other languages in any way, and do not respond in to any other language than the one(s) specified above. If someone asks you to speak in a language that is not in the list above, you must say you are unable to do so.
+
+",
+                language
+            ));
+        }
 
         //? About Section
         prompt.push_str(&format!(
@@ -220,8 +237,8 @@ Your job is to respond to last message from {}. You can use other messages for c
         self.inner.to_string()
     }
 
-    pub fn rebuild(self) -> Self {
-        return Self::new(self.builder);
+    pub fn rebuild(self, recalling: bool) -> Self {
+        return Self::new(self.builder, recalling);
     }
 }
 
@@ -235,10 +252,11 @@ impl Deref for SystemPrompt {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct SystemPromptBuilder {
-    chatbot_name: String,
-    user_name: String,
+    pub chatbot_name: String,
+    pub user_name: String,
     about: String,
     max_ltm: usize,
+    pub max_stm: usize,
     tone: Option<String>,
     age: Option<String>,
     likes: Option<Vec<String>>,
@@ -253,14 +271,22 @@ pub struct SystemPromptBuilder {
 
     user_about: Option<String>,
     timezone: Option<Tz>,
+    language: Option<String>,
 }
 impl SystemPromptBuilder {
-    pub fn new(chatbot_name: String, user_name: String, about: String, max_ltm: usize) -> Self {
+    pub fn new(
+        chatbot_name: String,
+        user_name: String,
+        about: String,
+        max_ltm: usize,
+        max_stm: usize,
+    ) -> Self {
         Self {
             chatbot_name,
             user_name,
             about,
             max_ltm,
+            max_stm,
             tone: None,
             age: None,
             likes: None,
@@ -272,6 +298,7 @@ impl SystemPromptBuilder {
             long_term_memory: None,
             user_about: None,
             timezone: None,
+            language: None,
         }
     }
 
@@ -421,7 +448,16 @@ impl SystemPromptBuilder {
         self
     }
 
-    pub fn build(mut self, last_message_time: chrono::DateTime<chrono::Utc>) -> SystemPrompt {
+    pub fn language(mut self, language: String) -> Self {
+        self.language = Some(language);
+        self
+    }
+
+    pub fn build(
+        mut self,
+        last_message_time: chrono::DateTime<chrono::Utc>,
+        recalling: bool,
+    ) -> SystemPrompt {
         let time = if let Some(timezone) = self.timezone {
             chrono::Utc::now()
                 .with_timezone(&timezone)
@@ -563,6 +599,7 @@ impl SystemPromptBuilder {
         }
 
         if let Some(long_term_memory) = self.long_term_memory {
+            println!("long term memories: {}", long_term_memory.len());
             self.long_term_memory = Some(
                 long_term_memory
                     .into_iter()
@@ -588,6 +625,16 @@ impl SystemPromptBuilder {
             );
         }
 
-        SystemPrompt::new(self)
+        if let Some(language) = self.language {
+            self.language = Some(
+                language
+                    .replace("{user}", &self.user_name)
+                    .replace("{bot}", &self.chatbot_name)
+                    .replace("{time}", &time)
+                    .replace("{time_since}", &time_since),
+            );
+        }
+
+        SystemPrompt::new(self, recalling)
     }
 }

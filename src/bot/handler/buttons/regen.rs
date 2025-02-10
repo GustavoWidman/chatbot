@@ -1,6 +1,6 @@
 use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
 
-use crate::chat;
+use crate::chat::{self, engine::ContextType};
 
 use super::super::Handler;
 
@@ -19,8 +19,6 @@ impl Handler {
             || chat::engine::ChatEngine::new(config, component.user.id)
         });
 
-        let regen_context = engine.get_regen_context().await;
-
         let old_content = component.message.content.clone();
         component
             .message
@@ -31,7 +29,7 @@ impl Handler {
             .await?;
 
         let out: anyhow::Result<()> = async {
-            let response = engine.user_prompt(None, regen_context).await?;
+            let response = engine.user_prompt(None, Some(ContextType::Regen)).await?;
 
             let content = response.content.clone();
 

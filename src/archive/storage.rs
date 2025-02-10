@@ -10,7 +10,7 @@ use qdrant_client::{
 use serde_json::json;
 use serenity::{all::UserId, json};
 
-use crate::config::structure::RetrievalConfig;
+use crate::config::structure::LLMConfig;
 
 pub struct MemorySettings {
     pub vector_size: u64,
@@ -23,7 +23,7 @@ pub struct MemoryStorage {
 }
 
 impl MemoryStorage {
-    pub fn new(config: &RetrievalConfig) -> Self {
+    pub fn new(config: &LLMConfig) -> Self {
         let client = Qdrant::from_url(&format!(
             "http{}://{}:{}",
             match config.qdrant_https.unwrap_or(false) {

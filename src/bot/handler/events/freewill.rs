@@ -6,7 +6,10 @@ use serenity::all::{
 };
 use tokio::{task::JoinHandle, time};
 
-use crate::{bot::handler::commands::InnerData, chat};
+use crate::{
+    bot::handler::commands::InnerData,
+    chat::{self, engine::ContextType},
+};
 
 use super::super::Handler;
 
@@ -95,16 +98,10 @@ impl Handler {
             || chat::engine::ChatEngine::new(config, user_id)
         });
 
-        let freewill_context = match engine.freewill_context().await {
-            Ok(context) => context,
-            Err(why) => {
-                println!("Error generating freewill context: {why:?}");
-                return false;
-            }
-        };
-
         let out: anyhow::Result<Message> = async {
-            let response = engine.user_prompt(None, freewill_context).await?;
+            let response = engine
+                .user_prompt(None, Some(ContextType::Freewill))
+                .await?;
 
             println!("{:?}", response);
 
