@@ -2,7 +2,7 @@ use std::vec;
 
 use anyhow::{anyhow, Result};
 use genai::chat::ChatMessage;
-use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, MessageRole};
+use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, MessageRole, ToolCall};
 use serenity::all::UserId;
 
 use crate::chat::prompt::SystemPromptBuilder;
@@ -13,10 +13,12 @@ pub struct Messages {
     selected: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CompletionMessage {
     pub role: String,
     pub content: String,
+    pub name: Option<String>,
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl Into<ChatMessage> for CompletionMessage {
@@ -44,8 +46,8 @@ impl Into<ChatCompletionMessage> for CompletionMessage {
         chat_completion::ChatCompletionMessage {
             role,
             content: chat_completion::Content::Text(self.content),
-            name: None,
-            tool_calls: None,
+            name: self.name,
+            tool_calls: self.tool_calls,
             tool_call_id: None,
         }
     }
@@ -105,6 +107,7 @@ impl ChatContext {
         self.add_message(CompletionMessage {
             role: "user".to_string(),
             content: message,
+            ..Default::default()
         });
     }
 
@@ -198,6 +201,7 @@ impl ChatContext {
         let mut context = vec![CompletionMessage {
             role: "system".to_string(),
             content: system_prompt.to_string(),
+            ..Default::default()
         }];
         context.extend(ctx.into_iter().map(|m| m.0));
 
@@ -285,6 +289,7 @@ impl ChatContext {
                 "*it's been around {} since you last said something, and the user did not respond. your next response should attempt to pull the user back into the conversation. please respond once again, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. your response should only contain the actual response, not your thoughts or anything else.*\n\n\"...\"",
                 time_since_last_as_str
             ),
+            ..Default::default()
         };
 
         self.add_message(message.clone());

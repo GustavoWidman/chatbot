@@ -56,11 +56,7 @@ impl Handler {
                     let max = 120;
                     let interval = time::Duration::from_secs(rand::random_range(min..max));
 
-                    println!("next freewill tick interval: {interval:?}");
-
                     tokio::time::sleep(interval).await;
-
-                    println!("freewill tick");
 
                     if Self::should_freewill(data.clone(), user.clone()).await {
                         let did_freewill = Self::freewill(
@@ -177,11 +173,7 @@ impl Handler {
             config.freewill.steepness,
         );
 
-        println!("time_since_last: {time_since_last}, threshold: {threshold}");
-
         let bool = rng.random_bool(threshold);
-
-        println!("bool: {bool}");
 
         bool
     }

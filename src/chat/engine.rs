@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use anyhow::Result;
 use genai::chat::ChatMessage;
+use openai_api_rs::v1::chat_completion::{ToolCall, ToolCallFunction};
 use serde_json::json;
 use serenity::all::UserId;
 
@@ -81,6 +82,7 @@ impl ChatEngine {
                 context.push(CompletionMessage {
                     role: "user".to_string(),
                     content: prompt,
+                    ..Default::default()
                 });
             }
 
@@ -96,25 +98,72 @@ impl ChatEngine {
                         return Ok(completion_message);
                     }
                 }
-                super::client::PromptResult::MemoryRecall(recalled_memories) => {
+                super::client::PromptResult::MemoryRecall((query, recalled_memories)) => {
                     has_recalled = true;
                     println!("recalled memories: {recalled_memories:?}");
                     self.context
                         .add_long_term_memories(recalled_memories.clone());
                     self.context.add_message(CompletionMessage {
-                        role: "tool".to_string(),
-                        // content: recalled_memories
-                        //     .join("\n---\n")
-                        //     .trim_end_matches("\n---\n")
-                        //     .to_string(),
-                        content: json!({
-                            "name": "memory_recall",
-                            "asdasd": recalled_memories
-                            .join("\n---\n")
-                            .trim_end_matches("\n---\n")
-                            .to_string(),
-                        })
-                        .to_string(),
+                        role: "assistant".to_string(),
+                        content: " ".to_string(),
+                        tool_calls: Some(vec![ToolCall {
+                            id: "".to_string(),
+                            r#type: "function".to_string(),
+                            function: ToolCallFunction {
+                                name: Some("memory_recall".to_string()),
+                                arguments: Some(
+                                    json!({
+                                        "query": query,
+                                    })
+                                    .to_string(),
+                                ),
+                            },
+                        }]),
+                        name: None,
+                    });
+
+                    let mut stringified_memories = recalled_memories
+                        .join("\n---\n")
+                        .trim_end_matches("\n---\n")
+                        .to_string();
+
+                    if stringified_memories.is_empty() {
+                        stringified_memories = "No memories found.".to_string()
+                    }
+
+                    self.context.add_message(CompletionMessage {
+                        role: "function".to_string(),
+                        content: stringified_memories,
+                        name: Some("memory_recall".to_string()),
+                        tool_calls: None,
+                    });
+                }
+                super::client::PromptResult::MemoryStore(memory) => {
+                    println!("memory stored: {memory}");
+
+                    self.context.add_message(CompletionMessage {
+                        role: "assistant".to_string(),
+                        content: " ".to_string(),
+                        tool_calls: Some(vec![ToolCall {
+                            id: "".to_string(),
+                            r#type: "function".to_string(),
+                            function: ToolCallFunction {
+                                name: Some("memory_store".to_string()),
+                                arguments: Some(
+                                    json!({
+                                        "memory": memory,
+                                    })
+                                    .to_string(),
+                                ),
+                            },
+                        }]),
+                        name: None,
+                    });
+                    self.context.add_message(CompletionMessage {
+                        role: "function".to_string(),
+                        content: "Memory stored successfully".to_string(),
+                        name: Some("memory_store".to_string()),
+                        tool_calls: None,
                     });
                 }
             }

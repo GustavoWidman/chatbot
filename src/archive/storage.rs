@@ -98,7 +98,7 @@ impl MemoryStorage {
         let search_result = self
             .client
             .search_points(
-                SearchPointsBuilder::new(collection_name, embedding, 10) // todo set recall limit
+                SearchPointsBuilder::new(collection_name, embedding, 1) // todo set recall limit
                     // .filter(Filter::all([Condition::matches("bar", 12)]))
                     .with_payload(true), // .params(SearchParamsBuilder::default().exact(true)),
             )

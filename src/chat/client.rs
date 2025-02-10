@@ -4,7 +4,6 @@ use anyhow::Result;
 
 use openai_api_rs::v1::{
     api::OpenAIClient,
-    assistant,
     chat_completion::{self, ChatCompletionRequest, Tool},
     embedding::EmbeddingRequest,
     types,
@@ -32,11 +31,16 @@ struct Query {
     query: String,
 }
 
+#[derive(Deserialize, Serialize)]
+struct Memory {
+    memory: String,
+}
+
 pub struct ChatClient {
     pub client: OpenAIClient,
     pub settings: ClientSettings,
     pub storage: MemoryStorage,
-    pub tool: Tool,
+    pub tools: Vec<Tool>,
 }
 
 impl ChatClient {
@@ -56,8 +60,8 @@ impl ChatClient {
             // so it's not searching the values in the env
             .unwrap();
 
-        let mut properties = HashMap::new();
-        properties.insert(
+        let mut recall_properties = HashMap::new();
+        recall_properties.insert(
             "query".to_string(),
             Box::new(types::JSONSchemaDefine {
                 schema_type: Some(types::JSONSchemaType::String),
@@ -66,7 +70,17 @@ impl ChatClient {
             }),
         );
 
-        let tool = chat_completion::Tool {
+        let mut store_properties = HashMap::new();
+        store_properties.insert(
+            "memory".to_string(),
+            Box::new(types::JSONSchemaDefine {
+                schema_type: Some(types::JSONSchemaType::String),
+                description: Some("The memory to store (in bullet points)".to_string()),
+                ..Default::default()
+            }),
+        );
+
+        let tools = vec![chat_completion::Tool {
             r#type: chat_completion::ToolType::Function,
             function: types::Function {
                 name: String::from("memory_recall"),
@@ -75,12 +89,26 @@ impl ChatClient {
                 )),
                 parameters: types::FunctionParameters {
                     schema_type: types::JSONSchemaType::Object,
-                    properties: Some(properties),
+                    properties: Some(recall_properties),
                     // required: Some(vec![String::from("query")]),
                     required: None,
                 },
             },
-        };
+        },chat_completion::Tool {
+            r#type: chat_completion::ToolType::Function,
+            function: types::Function {
+                name: String::from("memory_store"),
+                description: Some(String::from(
+                    "Use to store facts, preferences, or historical context, such as things that the user tells you that you judge should be remembered. Thoroughly describe the context, including the time and place, and the details of the facts you're storing. Preferably, use a list format, such as bullet points, to make it easier to recall the information later. Do not use the same bullet points more than once. The response should only contain the bullet points, and nothing else.",
+                )),
+                parameters: types::FunctionParameters {
+                    schema_type: types::JSONSchemaType::Object,
+                    properties: Some(store_properties),
+                    // required: Some(vec![String::from("memory")]),
+                    required: None,
+                },
+            },
+        }];
 
         Self {
             client,
@@ -94,7 +122,7 @@ impl ChatClient {
                 user_id,
             },
             storage: MemoryStorage::new(config),
-            tool,
+            tools,
             // tool,
         }
     }
@@ -108,10 +136,7 @@ impl ChatClient {
             self.settings.model.clone(),
             context.into_iter().map(|msg| msg.into()).collect(),
         )
-        .tools(match recall {
-            true => vec![self.tool.clone()],
-            false => vec![],
-        })
+        .tools(self.tools.clone())
         .max_tokens(self.settings.max_res_tokens)
         .temperature(self.settings.temperature)
         .presence_penalty(1.0)
@@ -120,8 +145,6 @@ impl ChatClient {
             true => chat_completion::ToolChoiceType::Auto,
             false => chat_completion::ToolChoiceType::None,
         });
-
-        println!("there is a request");
 
         let result = self.client.chat_completion(req).await.map_err(|e| {
             println!("error: {:?}", e);
@@ -146,19 +169,31 @@ impl ChatClient {
 
                     let query: String = serde_json::from_str::<Query>(&arguments)?.query;
 
-                    return Ok(PromptResult::MemoryRecall(self.search(query).await?));
+                    return Ok(PromptResult::MemoryRecall((
+                        query.clone(),
+                        self.search(query).await?,
+                    )));
+                }
+
+                if tool_call.function.name == Some("memory_store".to_owned()) {
+                    let arguments = tool_call
+                        .function
+                        .arguments
+                        .ok_or(anyhow::anyhow!("No arguments found in tool call"))?;
+
+                    let memory: String = serde_json::from_str::<Memory>(&arguments)?.memory;
+
+                    self.store_plain(memory.clone()).await?;
+
+                    return Ok(PromptResult::MemoryStore(memory));
                 }
             }
         };
-
-        println!("there is a response");
 
         let msg = first_choice
             .message
             .content
             .ok_or(anyhow::anyhow!("No content"))?;
-
-        println!("there is content");
 
         let regex = Regex::new(r"```.*").unwrap();
         let content = regex.replace_all(&msg, "").to_string();
@@ -167,6 +202,7 @@ impl ChatClient {
         Ok(PromptResult::Message(CompletionMessage {
             role: "assistant".to_string(),
             content,
+            ..Default::default()
         }))
     }
 
@@ -209,6 +245,14 @@ impl ChatClient {
             .await
     }
 
+    async fn store_plain(&self, memory: String) -> anyhow::Result<()> {
+        let embedding = self.embed(memory.clone()).await?;
+
+        self.storage
+            .store(memory, embedding, self.settings.user_id)
+            .await
+    }
+
     async fn summarize(
         &self,
         context: Vec<CompletionMessage>,
@@ -218,6 +262,7 @@ impl ChatClient {
         let ctx = vec![CompletionMessage {
             role: "system".to_string(),
             content: "You are a assistant that will take the user's input and summarize it to it's best, yet you will be incredibly detailed in what you are writing, putting important discoveries/revelations and new information into bullet points, the more bullet points the better. You will not repeat yourself, and you will not use the same bullet points more than once. The summarized input will be inserted into a long term memory storage, so only note the information you believe to be relevant to be eventually recalled in future conversations (new interests, new information, personality revelations, etc.). Do not state things that are short-termed (the user is going to the bathroom, the user is crying). Only state things that are long-termed (the user likes bananas, the user asked you out on a date). Your response should only contain the bullet points, and nothing else.".to_string(),
+            ..Default::default()
         }, CompletionMessage {
             role: "user".to_string(),
             content: context
@@ -232,13 +277,13 @@ impl ChatClient {
                 .join("")
                 .trim_end_matches("\n---\n")
                 .to_owned(),
+            ..Default::default()
         }];
 
         let req = ChatCompletionRequest::new(
             self.settings.model.clone(),
             ctx.into_iter().map(|msg| msg.into()).collect(),
         )
-        .tools(vec![self.tool.clone()])
         // .max_tokens(1)
         .temperature(0.0)
         .top_p(0.95);
@@ -260,5 +305,6 @@ impl ChatClient {
 
 pub enum PromptResult {
     Message(CompletionMessage),
-    MemoryRecall(Vec<String>),
+    MemoryRecall((String, Vec<String>)),
+    MemoryStore(String),
 }
