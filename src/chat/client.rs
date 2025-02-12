@@ -23,6 +23,7 @@ pub struct ClientSettings {
     pub top_p: f64,
     pub max_res_tokens: i64,
     pub vector_size: i32,
+    pub use_tools: bool,
     pub user_id: UserId,
 }
 
@@ -38,6 +39,7 @@ struct Memory {
 
 pub struct ChatClient {
     pub client: OpenAIClient,
+    pub embedding_client: Option<OpenAIClient>,
     pub settings: ClientSettings,
     pub storage: MemoryStorage,
     pub tools: Vec<Tool>,
@@ -59,6 +61,22 @@ impl ChatClient {
             // unwrap is safe because we've set both api key and url,
             // so it's not searching the values in the env
             .unwrap();
+
+        let embedding_client = match (
+            config.embedding_api_key.as_ref(),
+            config.embedding_custom_url.as_ref(),
+        ) {
+            (Some(api_key), Some(custom_url)) => {
+                let embedding_client = OpenAIClient::builder()
+                    .with_api_key(api_key)
+                    .with_endpoint(custom_url)
+                    .build()
+                    .unwrap();
+
+                Some(embedding_client)
+            }
+            _ => None,
+        };
 
         let mut recall_properties = HashMap::new();
         recall_properties.insert(
@@ -112,6 +130,7 @@ impl ChatClient {
 
         Self {
             client,
+            embedding_client,
             settings: ClientSettings {
                 model: config.model.clone(),
                 embedding_model: config.embedding_model.clone(),
@@ -119,6 +138,7 @@ impl ChatClient {
                 top_p: config.top_p.unwrap_or(0.95),
                 max_res_tokens: config.max_tokens.unwrap_or(1024),
                 vector_size: config.vector_size.unwrap_or(256) as i32,
+                use_tools: config.use_tools.unwrap_or(true),
                 user_id,
             },
             storage: MemoryStorage::new(config),
@@ -132,19 +152,21 @@ impl ChatClient {
         context: Vec<CompletionMessage>,
         recall: bool,
     ) -> Result<PromptResult> {
-        let req = ChatCompletionRequest::new(
+        let mut req = ChatCompletionRequest::new(
             self.settings.model.clone(),
             context.into_iter().map(|msg| msg.into()).collect(),
         )
-        .tools(self.tools.clone())
         .max_tokens(self.settings.max_res_tokens)
         .temperature(self.settings.temperature)
-        .presence_penalty(1.0)
-        .top_p(self.settings.top_p)
-        .tool_choice(match recall {
-            true => chat_completion::ToolChoiceType::Auto,
-            false => chat_completion::ToolChoiceType::None,
-        });
+        // .presence_penalty(1.0)
+        .top_p(self.settings.top_p);
+
+        if self.settings.use_tools {
+            req = req.tools(self.tools.clone()).tool_choice(match recall {
+                true => chat_completion::ToolChoiceType::Auto,
+                false => chat_completion::ToolChoiceType::None,
+            });
+        }
 
         let result = self.client.chat_completion(req).await.map_err(|e| {
             println!("error: {:?}", e);
@@ -158,9 +180,9 @@ impl ChatClient {
             .ok_or(anyhow::anyhow!("No choices found in response"))?;
 
         if let Some(tool_calls) = first_choice.message.tool_calls {
-            println!("tool calls: {:?}", tool_calls);
-
             for tool_call in tool_calls {
+                println!("tool call: {:?}", tool_call);
+
                 if tool_call.function.name == Some("memory_recall".to_owned()) {
                     let arguments = tool_call
                         .function
@@ -216,7 +238,10 @@ impl ChatClient {
         let mut req = EmbeddingRequest::new(self.settings.embedding_model.clone(), vec![context]);
         req.dimensions = Some(self.settings.vector_size);
 
-        let result = self.client.embedding(req).await?;
+        let result = match &self.embedding_client {
+            Some(embedding_client) => embedding_client.embedding(req).await?,
+            None => self.client.embedding(req).await?,
+        };
 
         Ok(result
             .data
