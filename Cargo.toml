@@ -8,7 +8,7 @@ anyhow = "1.0.95"
 chrono = { version = "0.4.39", features = ["serde"] }
 chrono-tz = { version = "0.10.1", features = ["serde"] }
 env_logger = "0.11.6"
-genai = "0.1.19"
+genai = "0.1.21"
 poise = "0.6.1"
 qdrant-client = "1.13.0"
 rand = "0.9.0"
