@@ -436,7 +436,9 @@ impl SystemPromptBuilder {
         }
 
         if let Some(long_term_memory) = self.long_term_memory {
-            println!("long term memories: {}", long_term_memory.len());
+            if long_term_memory.len() >= 1 {
+                println!("loaded long term memories: {}", long_term_memory.len());
+            }
             self.long_term_memory = Some(
                 long_term_memory
                     .into_iter()

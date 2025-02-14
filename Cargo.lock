@@ -249,7 +249,7 @@ dependencies = [
 [[package]]
 name = "branch-context"
 version = "0.1.0"
-source = "git+https://github.com/GustavoWidman/branch-context?branch=main#c00e774af8a0f053d7ddf049dc0f0bbcfc3867f2"
+source = "git+https://github.com/GustavoWidman/branch-context?branch=main#b3696f5f8e34d14f9af1b2d909a315dc4a8760fe"
 dependencies = [
  "anyhow",
  "chrono",
@@ -687,9 +687,9 @@ dependencies = [
 
 [[package]]
 name = "equivalent"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
+checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "errno"

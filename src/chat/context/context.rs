@@ -93,7 +93,7 @@ impl ChatContext {
                 ..Default::default()
             }];
 
-            println!("context: {:?}", context);
+            // println!("context: {:?}", context);
 
             return (context, None);
         }
@@ -137,7 +137,7 @@ impl ChatContext {
         // let mut context = vec![]; // todo for testing
         context.extend(ctx);
 
-        println!("context: {:?}", context);
+        // println!("context: {:?}", context);
 
         (context, drained)
     }

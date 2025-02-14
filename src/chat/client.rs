@@ -158,10 +158,15 @@ impl ChatClient {
         .top_p(self.settings.top_p);
 
         if self.settings.use_tools {
-            req = req.tools(self.tools.clone()).tool_choice(match recall {
-                true => chat_completion::ToolChoiceType::Auto,
-                false => chat_completion::ToolChoiceType::None,
-            });
+            let mut tools = self.tools.clone();
+            // if recall is off, remove the memory_recall tool (first, index 0)
+            if !recall {
+                tools.remove(0);
+            }
+
+            req = req
+                .tools(tools)
+                .tool_choice(chat_completion::ToolChoiceType::Auto);
         }
 
         let result = self.client.chat_completion(req).await.map_err(|e| {
