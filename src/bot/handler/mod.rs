@@ -1,21 +1,7 @@
-use std::collections::HashMap;
-
 use commands::Data;
 use serenity::{
-    all::{
-        Context, CreateButton, CreateMessage, EditMessage, EventHandler, Interaction, Message,
-        Ready, User,
-    },
+    all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
     async_trait,
-};
-use tokio::sync::{
-    RwLock,
-    broadcast::{Receiver, Sender},
-};
-
-use crate::{
-    chat::{self, engine::ChatEngine},
-    config::store::ChatBotConfig,
 };
 
 mod buttons;
@@ -92,5 +78,15 @@ impl EventHandler for Handler {
             }
             _ => {}
         }
+    }
+
+    async fn message_update(
+        &self,
+        ctx: Context,
+        old_if_available: Option<Message>,
+        new: Option<Message>,
+        event: MessageUpdateEvent,
+    ) {
+        self.on_edit(ctx, old_if_available, new, event).await;
     }
 }

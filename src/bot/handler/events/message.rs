@@ -8,13 +8,11 @@ use super::super::Handler;
 
 impl Handler {
     pub async fn on_message(&self, ctx: Context, msg: Message) {
-        let data = self.data.clone();
-
         if msg.author.bot {
             return;
-        } else {
-            data.msg_channel.0.send(msg.content.clone()).unwrap();
         }
+
+        let data = self.data.clone();
 
         self.freewill_dispatch(msg.author.clone(), msg.channel_id, ctx.http.clone())
             .await;
@@ -33,7 +31,7 @@ impl Handler {
             .await
         {
             Ok(response) => {
-                engine.add_user_message(msg.content);
+                engine.add_user_message(msg.content, msg.id);
 
                 let message = CreateMessage::new()
                     .content(response.content.clone())
@@ -51,14 +49,13 @@ impl Handler {
                             .style(serenity::all::ButtonStyle::Secondary),
                     );
 
-                let msg = msg
+                match msg
                     .channel_id
                     .send_message(ctx.http.clone(), message.clone())
-                    .await;
-
-                match msg {
+                    .await
+                {
                     Ok(msg) => {
-                        engine.add_message(response);
+                        engine.add_message(response, Some(msg.id));
                         Ok(msg)
                     }
                     Err(why) => {
@@ -76,19 +73,5 @@ impl Handler {
         };
 
         typing.stop();
-
-        tokio::spawn({
-            let mut recv = data.msg_channel.0.subscribe();
-
-            async move {
-                if let Ok(mut m) = m {
-                    // wait for msg to be sent
-                    let _ = recv.recv().await;
-                    let _ = m
-                        .edit(ctx.http.clone(), EditMessage::new().components(vec![]))
-                        .await;
-                }
-            }
-        });
     }
 }

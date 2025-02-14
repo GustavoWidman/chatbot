@@ -22,7 +22,6 @@ mod reload;
 pub struct InnerData {
     pub config: RwLock<ChatBotConfig>,
     pub user_map: RwLock<HashMap<User, ChatEngine>>,
-    pub msg_channel: (Sender<String>, Receiver<String>),
     pub freewill_map: RwLock<HashMap<User, JoinHandle<()>>>,
 }
 pub type Data = Arc<InnerData>;
@@ -31,7 +30,6 @@ pub async fn framework(config: ChatBotConfig) -> (impl Framework + 'static, Data
     let data = Arc::new(InnerData {
         config: RwLock::new(config),
         user_map: RwLock::new(HashMap::new()),
-        msg_channel: tokio::sync::broadcast::channel(100),
         freewill_map: RwLock::new(HashMap::new()),
     });
     let clone = data.clone();

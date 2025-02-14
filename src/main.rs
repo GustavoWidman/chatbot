@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
-use chat::CompletionMessage;
+use chat::ChatMessage;
 use config::store::ChatBotConfig;
 
 mod archive;
 mod bot;
 mod chat;
 mod config;
+mod utils;
 
 #[tokio::main]
 async fn main() {

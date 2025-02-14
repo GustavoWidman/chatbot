@@ -1,6 +1,6 @@
 use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
 
-use crate::chat::{self, engine::ContextType};
+use crate::chat::{self, engine::ContextType, ChatMessage};
 
 use super::super::Handler;
 
@@ -19,6 +19,11 @@ impl Handler {
             || chat::engine::ChatEngine::new(config, component.user.id)
         });
 
+        // uses this to find the error before other things
+        let _ = engine
+            .find_mut(component.message.id)
+            .ok_or(anyhow::anyhow!("message not found in engine"))?;
+
         let old_content = component.message.content.clone();
         component
             .message
@@ -28,7 +33,7 @@ impl Handler {
             )
             .await?;
 
-        let out: anyhow::Result<()> = async {
+        let out: anyhow::Result<ChatMessage> = async {
             let response = engine.user_prompt(None, Some(ContextType::Regen)).await?;
 
             let content = response.content.clone();
@@ -56,15 +61,20 @@ impl Handler {
                 )
                 .await?;
 
-            // only change context after we're sure everything is okay
-            engine.regenerate(response)?;
-
-            Ok(())
+            Ok(response)
         }
         .await;
 
         match out {
-            Ok(_) => Ok(()),
+            Ok(out) => {
+                let message = engine
+                    .find_mut(component.message.id)
+                    .ok_or(anyhow::anyhow!("message not found in engine"))?;
+
+                message.push(out); // pushes and selects
+
+                Ok(())
+            }
             Err(why) => {
                 component
                     .message

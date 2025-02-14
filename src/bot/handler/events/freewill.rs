@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use rand::{rngs::StdRng, Rng};
-use serenity::all::{
-    CacheHttp, ChannelId, Context, CreateButton, CreateMessage, EditMessage, Http, Message, User,
-};
+use rand::Rng;
+use serenity::all::{ChannelId, CreateButton, CreateMessage, EditMessage, Http, Message, User};
 use tokio::{task::JoinHandle, time};
 
 use crate::{
@@ -16,7 +14,6 @@ use super::super::Handler;
 impl Handler {
     pub async fn freewill_dispatch(&self, user: User, channel: ChannelId, http: Arc<Http>) {
         let data = self.data.clone();
-
         let mut freewill_map = data.freewill_map.write().await;
         freewill_map
             .entry(user.clone())
@@ -119,31 +116,16 @@ impl Handler {
                 );
 
             let msg = channel.send_message(http.clone(), message.clone()).await?;
-            data.msg_channel.0.send(response.content.clone()).unwrap();
 
             // only change context after we're sure everything is okay
-            engine.add_message(response);
+            engine.add_message(response, Some(msg.id));
 
             Ok(msg)
         }
         .await;
 
         match out {
-            Ok(mut msg) => {
-                tokio::spawn({
-                    let mut recv = data.msg_channel.0.subscribe();
-
-                    async move {
-                        // wait for msg to be sent
-                        let _ = recv.recv().await;
-                        let _ = msg
-                            .edit(http.clone(), EditMessage::new().components(vec![]))
-                            .await;
-                    }
-                });
-
-                true
-            }
+            Ok(_) => true,
             Err(why) => {
                 println!("Error sending message: {why:?}");
                 return false;
@@ -160,7 +142,10 @@ impl Handler {
             || chat::engine::ChatEngine::new(config, user_id)
         });
 
-        let time_since_last = engine.time_since_last().unwrap_or(0.0);
+        let time_since_last = engine
+            .time_since_last()
+            .map(|t| t.num_seconds() as f64)
+            .unwrap_or(0.0);
 
         data.config.write().await.update();
         let config = data.config.read().await;

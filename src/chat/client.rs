@@ -14,7 +14,7 @@ use serenity::all::UserId;
 
 use crate::{archive::storage::MemoryStorage, config::structure::LLMConfig};
 
-use super::context::CompletionMessage;
+use super::context::ChatMessage;
 
 pub struct ClientSettings {
     pub model: String,
@@ -147,11 +147,7 @@ impl ChatClient {
         }
     }
 
-    pub async fn prompt(
-        &self,
-        context: Vec<CompletionMessage>,
-        recall: bool,
-    ) -> Result<PromptResult> {
+    pub async fn prompt(&self, context: Vec<ChatMessage>, recall: bool) -> Result<PromptResult> {
         let mut req = ChatCompletionRequest::new(
             self.settings.model.clone(),
             context.into_iter().map(|msg| msg.into()).collect(),
@@ -221,7 +217,7 @@ impl ChatClient {
         let content = regex.replace_all(&msg, "").to_string();
 
         // tokio::time::sleep(std::time::Duration::from_secs(5)).await; // simulate API call latency
-        Ok(PromptResult::Message(CompletionMessage {
+        Ok(PromptResult::Message(ChatMessage {
             role: "assistant".to_string(),
             content,
             ..Default::default()
@@ -253,7 +249,7 @@ impl ChatClient {
 
     pub async fn store(
         &self,
-        context: Vec<CompletionMessage>,
+        context: Vec<ChatMessage>,
         user_name: String,
         assistant_name: String,
     ) -> anyhow::Result<()> {
@@ -280,15 +276,15 @@ impl ChatClient {
 
     async fn summarize(
         &self,
-        context: Vec<CompletionMessage>,
+        context: Vec<ChatMessage>,
         user_name: String,
         assistant_name: String,
     ) -> anyhow::Result<String> {
-        let ctx = vec![CompletionMessage {
+        let ctx = vec![ChatMessage {
             role: "system".to_string(),
             content: "You are a assistant that will take the user's input and summarize it to it's best, yet you will be incredibly detailed in what you are writing, putting important discoveries/revelations and new information into bullet points, the more bullet points the better. You will not repeat yourself, and you will not use the same bullet points more than once. The summarized input will be inserted into a long term memory storage, so only note the information you believe to be relevant to be eventually recalled in future conversations (new interests, new information, personality revelations, etc.). Do not state things that are short-termed (the user is going to the bathroom, the user is crying). Only state things that are long-termed (the user likes bananas, the user asked you out on a date). Your response should only contain the bullet points, and nothing else.".to_string(),
             ..Default::default()
-        }, CompletionMessage {
+        }, ChatMessage {
             role: "user".to_string(),
             content: context
                 .into_iter()
@@ -329,7 +325,7 @@ impl ChatClient {
 }
 
 pub enum PromptResult {
-    Message(CompletionMessage),
+    Message(ChatMessage),
     MemoryRecall((String, Vec<String>)),
     MemoryStore(String),
 }

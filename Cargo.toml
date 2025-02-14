@@ -9,6 +9,7 @@ chrono = { version = "0.4.39", features = ["serde"] }
 chrono-tz = { version = "0.10.1", features = ["serde"] }
 env_logger = "0.11.6"
 genai = "0.1.21"
+indexmap = "2.7.1"
 poise = "0.6.1"
 qdrant-client = "1.13.0"
 rand = "0.9.0"
@@ -25,3 +26,7 @@ toml = "0.8.20"
 git = "https://github.com/GustavoWidman/openai-api-rs"
 default-features = false
 features = ["rustls"]
+
+[dependencies.branch-context]
+git = "https://github.com/GustavoWidman/branch-context"
+branch = "main"

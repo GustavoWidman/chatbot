@@ -1,7 +1,5 @@
 use std::ops::{Deref, DerefMut};
 
-use anyhow::Result;
-use genai::chat::ChatMessage;
 use openai_api_rs::v1::chat_completion::{ToolCall, ToolCallFunction};
 use serde_json::json;
 use serenity::all::UserId;
@@ -10,7 +8,7 @@ use crate::config::store::ChatBotConfig;
 
 use super::{
     client::ChatClient,
-    context::{self, ChatContext, CompletionMessage, Messages},
+    context::{ChatContext, ChatMessage},
 };
 
 pub struct ChatEngine {
@@ -51,21 +49,19 @@ impl ChatEngine {
         &mut self,
         prompt: Option<String>,
         context: Option<ContextType>,
-    ) -> anyhow::Result<CompletionMessage> {
+    ) -> anyhow::Result<ChatMessage> {
         let retries = 5;
 
         let mut i = 0;
         let mut has_recalled = false;
         while i < retries {
-            let (mut context, drained): (Vec<CompletionMessage>, Option<Vec<CompletionMessage>>) =
-                match context {
-                    Some(ContextType::User) => self.context.get_context(!has_recalled).await,
-                    Some(ContextType::Freewill) => {
-                        self.context.freewill_context(!has_recalled).await
-                    }
-                    Some(ContextType::Regen) => self.context.get_regen_context(!has_recalled).await,
-                    None => self.context.get_context(!has_recalled).await,
-                }?;
+            let (mut context, drained): (Vec<ChatMessage>, Option<Vec<ChatMessage>>) = match context
+            {
+                Some(ContextType::User) => self.context.get_context(!has_recalled).await,
+                Some(ContextType::Freewill) => self.context.freewill_context(!has_recalled).await?,
+                Some(ContextType::Regen) => self.context.get_regen_context(!has_recalled).await,
+                None => self.context.get_context(!has_recalled).await,
+            };
 
             if let Some(drained) = drained {
                 println!("draining {drained:?}");
@@ -79,7 +75,7 @@ impl ChatEngine {
             }
 
             if let Some(prompt) = prompt.clone() {
-                context.push(CompletionMessage {
+                context.push(ChatMessage {
                     role: "user".to_string(),
                     content: prompt,
                     ..Default::default()
@@ -103,24 +99,28 @@ impl ChatEngine {
                     println!("recalled memories: {recalled_memories:?}");
                     self.context
                         .add_long_term_memories(recalled_memories.clone());
-                    self.context.add_message(CompletionMessage {
-                        role: "assistant".to_string(),
-                        content: " ".to_string(),
-                        tool_calls: Some(vec![ToolCall {
-                            id: "".to_string(),
-                            r#type: "function".to_string(),
-                            function: ToolCallFunction {
-                                name: Some("memory_recall".to_string()),
-                                arguments: Some(
-                                    json!({
-                                        "query": query,
-                                    })
-                                    .to_string(),
-                                ),
-                            },
-                        }]),
-                        name: None,
-                    });
+                    self.context.add_message(
+                        ChatMessage {
+                            role: "assistant".to_string(),
+                            content: " ".to_string(),
+                            tool_calls: Some(vec![ToolCall {
+                                id: "".to_string(),
+                                r#type: "function".to_string(),
+                                function: ToolCallFunction {
+                                    name: Some("memory_recall".to_string()),
+                                    arguments: Some(
+                                        json!({
+                                            "query": query,
+                                        })
+                                        .to_string(),
+                                    ),
+                                },
+                            }]),
+                            name: None,
+                            ..Default::default()
+                        },
+                        None::<u64>,
+                    );
 
                     let mut stringified_memories = recalled_memories
                         .join("\n---\n")
@@ -131,40 +131,52 @@ impl ChatEngine {
                         stringified_memories = "No memories found.".to_string()
                     }
 
-                    self.context.add_message(CompletionMessage {
-                        role: "function".to_string(),
-                        content: stringified_memories,
-                        name: Some("memory_recall".to_string()),
-                        tool_calls: None,
-                    });
+                    self.context.add_message(
+                        ChatMessage {
+                            role: "function".to_string(),
+                            content: stringified_memories,
+                            name: Some("memory_recall".to_string()),
+                            tool_calls: None,
+                            ..Default::default()
+                        },
+                        None::<u64>,
+                    );
                 }
                 super::client::PromptResult::MemoryStore(memory) => {
                     println!("memory stored: {memory}");
 
-                    self.context.add_message(CompletionMessage {
-                        role: "assistant".to_string(),
-                        content: " ".to_string(),
-                        tool_calls: Some(vec![ToolCall {
-                            id: "".to_string(),
-                            r#type: "function".to_string(),
-                            function: ToolCallFunction {
-                                name: Some("memory_store".to_string()),
-                                arguments: Some(
-                                    json!({
-                                        "memory": memory,
-                                    })
-                                    .to_string(),
-                                ),
-                            },
-                        }]),
-                        name: None,
-                    });
-                    self.context.add_message(CompletionMessage {
-                        role: "function".to_string(),
-                        content: "Memory stored successfully".to_string(),
-                        name: Some("memory_store".to_string()),
-                        tool_calls: None,
-                    });
+                    self.context.add_message(
+                        ChatMessage {
+                            role: "assistant".to_string(),
+                            content: " ".to_string(),
+                            tool_calls: Some(vec![ToolCall {
+                                id: "".to_string(),
+                                r#type: "function".to_string(),
+                                function: ToolCallFunction {
+                                    name: Some("memory_store".to_string()),
+                                    arguments: Some(
+                                        json!({
+                                            "memory": memory,
+                                        })
+                                        .to_string(),
+                                    ),
+                                },
+                            }]),
+                            name: None,
+                            ..Default::default()
+                        },
+                        None::<u64>,
+                    );
+                    self.context.add_message(
+                        ChatMessage {
+                            role: "function".to_string(),
+                            content: "Memory stored successfully".to_string(),
+                            name: Some("memory_store".to_string()),
+                            tool_calls: None,
+                            ..Default::default()
+                        },
+                        None::<u64>,
+                    );
                 }
             }
         }

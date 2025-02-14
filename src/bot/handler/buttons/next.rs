@@ -1,3 +1,4 @@
+use anyhow::bail;
 use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
 
 use crate::chat;
@@ -19,9 +20,17 @@ impl Handler {
             || chat::engine::ChatEngine::new(config, component.user.id)
         });
 
-        let (message, can_go_fwd) = engine.go_fwd().unwrap();
+        let message = engine
+            .find_mut(component.message.id)
+            .ok_or(anyhow::anyhow!("message not found in engine"))?;
 
-        let (can_go_fwd, emoji) = match can_go_fwd {
+        if !message.forward {
+            bail!("message is already at the end of the context");
+        }
+
+        let content = message.forward().content.clone();
+
+        let (can_go_fwd, emoji) = match message.forward {
             true => ("next", '⏩'),
             false => ("regen", '♻'),
         };
@@ -31,7 +40,7 @@ impl Handler {
             .edit(
                 ctx.http.clone(),
                 EditMessage::new()
-                    .content(message.content.clone())
+                    .content(content)
                     .button(
                         CreateButton::new("prev")
                             .label("")

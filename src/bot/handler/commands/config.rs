@@ -1,12 +1,8 @@
-use std::any;
 use std::fmt::Display;
 
-use poise::serenity_prelude as serenity;
 use poise::CreateReply;
-use serde::Deserialize;
 
 use super::{Context, Error};
-use crate::chat;
 
 #[derive(Debug, poise::ChoiceParameter)]
 pub enum KeyChoice {
