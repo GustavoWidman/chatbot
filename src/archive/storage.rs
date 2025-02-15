@@ -33,6 +33,7 @@ impl MemoryStorage {
             config.qdrant_host,
             config.qdrant_port.unwrap_or(6334)
         ))
+        .skip_compatibility_check()
         .build()
         .unwrap();
 

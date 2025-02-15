@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use chrono::Duration;
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
@@ -316,11 +317,7 @@ impl SystemPromptBuilder {
         self
     }
 
-    pub fn build(
-        mut self,
-        last_message_time: chrono::DateTime<chrono::Utc>,
-        recalling: bool,
-    ) -> SystemPrompt {
+    pub fn build(mut self, time_since_last: Duration, recalling: bool) -> SystemPrompt {
         let time = if let Some(timezone) = self.timezone {
             chrono::Utc::now()
                 .with_timezone(&timezone)
@@ -330,8 +327,7 @@ impl SystemPromptBuilder {
         }
         .to_string();
 
-        let time_since =
-            utils::time_to_string(last_message_time.signed_duration_since(chrono::Utc::now()));
+        let time_since = utils::time_to_string(time_since_last);
 
         if let Some(tone) = self.tone {
             self.tone = Some(

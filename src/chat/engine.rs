@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use openai_api_rs::v1::chat_completion::{ToolCall, ToolCallFunction};
 use serde_json::json;
-use serenity::all::UserId;
+use serenity::all::{MessageId, UserId};
 
 use crate::config::store::ChatBotConfig;
 
@@ -59,7 +59,11 @@ impl ChatEngine {
             {
                 Some(ContextType::User) => self.context.get_context(!has_recalled).await,
                 Some(ContextType::Freewill) => self.context.freewill_context(!has_recalled).await?,
-                Some(ContextType::Regen) => self.context.get_regen_context(!has_recalled).await,
+                Some(ContextType::Regen(message_id)) => {
+                    self.context
+                        .get_regen_context(message_id, !has_recalled)
+                        .await?
+                }
                 None => self.context.get_context(!has_recalled).await,
             };
 
@@ -82,7 +86,19 @@ impl ChatEngine {
                 });
             }
 
-            let response = self.client.prompt(context.clone(), !has_recalled).await?;
+            // retry if we get an error as well, but only up to the max retries
+            let response = match self.client.prompt(context.clone(), !has_recalled).await {
+                Ok(response) => response,
+                Err(why) => {
+                    if i + 1 >= retries {
+                        return Err(why);
+                    } else {
+                        println!("error: {why:?}, retrying");
+                        i += 1;
+                        continue;
+                    }
+                }
+            };
 
             match response {
                 super::client::PromptResult::Message(completion_message) => {
@@ -202,5 +218,5 @@ impl DerefMut for ChatEngine {
 pub enum ContextType {
     User,
     Freewill,
-    Regen,
+    Regen(MessageId),
 }

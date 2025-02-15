@@ -11,8 +11,8 @@ pub struct ChatBotConfigTOML {
 pub struct ChatBotConfigInner {
     pub discord: DiscordConfig,
     pub llm: LLMConfig,
-    pub prompt: SystemPromptBuilder,
     pub freewill: FreewillConfig,
+    pub prompt: SystemPromptBuilder,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -35,6 +35,7 @@ pub struct LLMConfig {
     pub embedding_custom_url: Option<String>,
     pub embedding_api_key: Option<String>,
     pub use_tools: Option<bool>,
+    pub force_lowercase: Option<bool>,
     pub custom_url: Option<String>,
     pub max_tokens: Option<i64>,
     pub temperature: Option<f64>,

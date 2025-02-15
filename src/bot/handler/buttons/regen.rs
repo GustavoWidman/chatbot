@@ -34,7 +34,9 @@ impl Handler {
             .await?;
 
         let out: anyhow::Result<ChatMessage> = async {
-            let response = engine.user_prompt(None, Some(ContextType::Regen)).await?;
+            let response = engine
+                .user_prompt(None, Some(ContextType::Regen(component.message.id)))
+                .await?;
 
             let content = response.content.clone();
 

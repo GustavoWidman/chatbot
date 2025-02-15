@@ -19,6 +19,7 @@ use super::context::ChatMessage;
 pub struct ClientSettings {
     pub model: String,
     pub embedding_model: String,
+    pub force_lowercase: bool,
     pub temperature: f64,
     pub top_p: f64,
     pub max_res_tokens: i64,
@@ -117,7 +118,7 @@ impl ChatClient {
             function: types::Function {
                 name: String::from("memory_store"),
                 description: Some(String::from(
-                    "Use to store facts, preferences, or historical context, such as things that the user tells you that you judge should be remembered. Thoroughly describe the context, including the time and place, and the details of the facts you're storing. Preferably, use a list format, such as bullet points, to make it easier to recall the information later. Do not use the same bullet points more than once. The response should only contain the bullet points, and nothing else.",
+                    "Use to store facts, preferences, or historical context, such as things that the user tells you that you judge should be remembered. Thoroughly describe the context, including the time and place, and the details of the facts you're storing. Preferably, use a list format, such as bullet points, to make it easier to recall the information later. Do not use the same bullet points more than once. The response should only contain the bullet points, and nothing else. Do not remember things that are temporary, such as current actions or events, simply record facts that should be remembered for the long term, like \"user likes apples\" instead of \"user is in the kitchen\"",
                 )),
                 parameters: types::FunctionParameters {
                     schema_type: types::JSONSchemaType::Object,
@@ -135,6 +136,7 @@ impl ChatClient {
                 model: config.model.clone(),
                 embedding_model: config.embedding_model.clone(),
                 temperature: config.temperature.unwrap_or(1.0),
+                force_lowercase: config.force_lowercase.unwrap_or(false),
                 top_p: config.top_p.unwrap_or(0.95),
                 max_res_tokens: config.max_tokens.unwrap_or(1024),
                 vector_size: config.vector_size.unwrap_or(256) as i32,
@@ -143,11 +145,17 @@ impl ChatClient {
             },
             storage: MemoryStorage::new(config),
             tools,
-            // tool,
         }
     }
 
     pub async fn prompt(&self, context: Vec<ChatMessage>, recall: bool) -> Result<PromptResult> {
+        //! for debugging
+        // for message in context.iter() {
+        //     if message.role == "user" || message.role == "assistant" {
+        //         println!("{}: {}", message.role, message.content);
+        //     }
+        // }
+
         let mut req = ChatCompletionRequest::new(
             self.settings.model.clone(),
             context.into_iter().map(|msg| msg.into()).collect(),
@@ -219,7 +227,11 @@ impl ChatClient {
             .ok_or(anyhow::anyhow!("No content"))?;
 
         let regex = Regex::new(r"```.*").unwrap();
-        let content = regex.replace_all(&msg, "").to_string();
+        let mut content = regex.replace_all(&msg, "").to_string();
+
+        if self.settings.force_lowercase {
+            content = content.to_lowercase();
+        }
 
         // tokio::time::sleep(std::time::Duration::from_secs(5)).await; // simulate API call latency
         Ok(PromptResult::Message(ChatMessage {

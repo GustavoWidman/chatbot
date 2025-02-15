@@ -75,43 +75,9 @@ impl ChatContext {
         self.messages.get_full_mut(&id.into())
     }
 
-    pub async fn get_context(
-        &mut self,
-        recalling: bool,
-    ) -> (Vec<ChatMessage>, Option<Vec<ChatMessage>>) {
-        if self.messages.is_empty() {
-            let last_message_time = chrono::Utc::now();
-
-            let system_prompt = self
-                .system_prompt
-                .clone()
-                .build(last_message_time, recalling);
-
-            let context = vec![ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-                ..Default::default()
-            }];
-
-            // println!("context: {:?}", context);
-
-            return (context, None);
-        }
-
-        let mut ctx = vec![];
-
-        // Add the messages
-        self.messages
-            .iter()
-            .for_each(|(_, messages)| ctx.push(messages.selected().clone()));
-
-        // unwrapping is safe because we know the context is not empty
-        let last_message_time = ctx.last().map(|m| m.sent_at).unwrap();
-
-        // if the STM is full, we will remove the last 20% of the STM from the beginning (oldest)
-
-        // 50 stm, 50 max stm
-        let drained = if self.messages.len() >= self.system_prompt.max_stm {
+    /// If STM is full, drain until STM is 80% of max_stm
+    async fn drain_overflow(&mut self) -> Option<Vec<ChatMessage>> {
+        if self.messages.len() >= self.system_prompt.max_stm {
             let to_remove = self.messages.len() - ((self.system_prompt.max_stm * 4) / 5);
             println!("context close to or full, draining {to_remove} messages");
             Some(
@@ -122,12 +88,42 @@ impl ChatContext {
             )
         } else {
             None
-        };
+        }
+    }
 
-        let system_prompt = self
-            .system_prompt
-            .clone()
-            .build(last_message_time, recalling);
+    pub async fn get_context(
+        &mut self,
+        recalling: bool,
+    ) -> (Vec<ChatMessage>, Option<Vec<ChatMessage>>) {
+        if self.messages.is_empty() {
+            let system_prompt = self
+                .system_prompt
+                .clone()
+                .build(chrono::Duration::seconds(0), recalling);
+
+            let context = vec![ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+                ..Default::default()
+            }];
+
+            return (context, None);
+        }
+
+        // Add the messages
+        let ctx = self
+            .messages
+            .iter()
+            .map(|(_, messages)| messages.selected().clone())
+            .collect::<Vec<_>>();
+
+        let drained = self.drain_overflow().await;
+
+        let system_prompt = self.system_prompt.clone().build(
+            // unwrapping is safe because we know the context is not empty
+            self.time_since_last().unwrap(),
+            recalling,
+        );
 
         let mut context = vec![ChatMessage {
             role: "system".to_string(),
@@ -137,29 +133,48 @@ impl ChatContext {
         // let mut context = vec![]; // todo for testing
         context.extend(ctx);
 
-        // println!("context: {:?}", context);
-
         (context, drained)
     }
 
     // gets context but excludes the last message and the user prompt is taken as string-only
+    // regenerating never drains, because it does not increase the STM size, so .1 is always None
     pub async fn get_regen_context(
         &mut self,
+        message_id: MessageId,
         recalling: bool,
-    ) -> (Vec<ChatMessage>, Option<Vec<ChatMessage>>) {
-        // context.push(CompletionMessage {
-        //     role: "system".to_string(),
-        //     content: "Please send a different response than you'd usually do, but keep the same tone and style as you normally would, following all previous instructions".to_string(),
-        // });
+    ) -> Result<(Vec<ChatMessage>, Option<Vec<ChatMessage>>)> {
+        let (index, _, _) = self
+            .find_full(message_id)
+            .ok_or(anyhow!("message not found"))?;
 
-        let (mut context, drained) = self.get_context(recalling).await;
+        // get from 0..index
+        let ctx = self
+            .messages
+            .get_range(0..index)
+            .ok_or(anyhow!("context not found"))?
+            .iter()
+            .map(|(_, messages)| messages.selected().clone())
+            .collect::<Vec<_>>();
 
-        // take off the last two, keep the second to last
-        if let Some(pos) = context.iter().rposition(|m| m.role == "assistant") {
-            context.remove(pos);
-        }
+        let system_prompt = self.system_prompt.clone().build(
+            // unwrapping is safe because we know the context is not empty
+            self.time_since_last().unwrap(),
+            recalling,
+        );
 
-        (context, drained)
+        let mut context = vec![ChatMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+            ..Default::default()
+        }];
+        // let mut context = vec![]; // todo for testing
+        context.extend(ctx);
+
+        // if let Some(pos) = context.iter().rposition(|m| m.role == "assistant") {
+        //     context.remove(pos);
+        // }
+
+        Ok((context, None))
     }
 
     pub async fn freewill_context(
@@ -188,7 +203,7 @@ impl ChatContext {
     pub fn time_since_last(&self) -> anyhow::Result<chrono::Duration> {
         let last = self
             .latest()
-            .ok_or(anyhow!("Context is empty, nothing to freewill out of"))?;
+            .ok_or(anyhow!("Context is empty, there's no last message"))?;
 
         Ok(chrono::Utc::now() - last.selected().sent_at)
     }

@@ -112,7 +112,7 @@ impl Handler {
                         .label("")
                         .emoji('♻')
                         .style(serenity::all::ButtonStyle::Secondary)
-                        .disabled(true), // todo fix freewill regen context (keep the old sys prompt maybe)
+                        .disabled(false),
                 );
 
             let msg = channel.send_message(http.clone(), message.clone()).await?;
