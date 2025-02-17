@@ -1,7 +1,7 @@
 use anyhow::bail;
 use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
 
-use crate::chat;
+use crate::chat::engine::EngineGuard;
 
 use super::super::Handler;
 
@@ -13,12 +13,8 @@ impl Handler {
     ) -> anyhow::Result<()> {
         let data = self.data.clone();
 
-        let mut user_map = data.user_map.write().await;
-        let engine = user_map.entry(component.user.clone()).or_insert_with({
-            data.config.write().await.update();
-            let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config, component.user.id)
-        });
+        let guard = EngineGuard::lock(&data, component.user).await;
+        let mut engine = guard.engine().await.write().await;
 
         let message = engine
             .find_mut(component.message.id)
@@ -29,11 +25,6 @@ impl Handler {
         }
 
         let content = message.backward().content.clone();
-
-        let (can_go_fwd, emoji) = match message.forward {
-            true => ("next", '⏩'),
-            false => ("regen", '♻'),
-        };
 
         component
             .message

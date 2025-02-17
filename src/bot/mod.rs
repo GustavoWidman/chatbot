@@ -1,8 +1,9 @@
 use anyhow::Result;
 use handler::Handler;
-use serenity::{Client, all::GatewayIntents};
+use serenity::{all::GatewayIntents, Client};
 
 use crate::config::store::ChatBotConfig;
+pub use handler::Data;
 
 mod handler;
 
@@ -27,7 +28,7 @@ impl ChatBot {
         let ChatBot { mut client } = self;
 
         if let Err(why) = client.start().await {
-            println!("Client error: {why:?}");
+            log::error!("Client error: {why:?}");
         }
     }
 }

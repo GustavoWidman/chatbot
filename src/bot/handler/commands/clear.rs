@@ -1,5 +1,7 @@
 use poise::CreateReply;
 
+use tokio::sync::RwLock;
+
 use super::{Context, Error};
 use crate::chat;
 
@@ -15,14 +17,14 @@ pub(super) async fn clear(ctx: Context<'_>) -> Result<(), Error> {
             data.config.write().await.update();
             let config = data.config.read().await.clone();
             |engine| {
-                *engine = chat::engine::ChatEngine::new(config, ctx.author().id);
+                *engine = RwLock::new(chat::engine::ChatEngine::new(config, ctx.author().id));
             }
         })
         .or_insert_with({
             data.config.write().await.update();
             let mut config = data.config.read().await.clone();
             config.update();
-            || chat::engine::ChatEngine::new(config, ctx.author().id)
+            || RwLock::new(chat::engine::ChatEngine::new(config, ctx.author().id))
         });
 
     let mut freewill_map = data.freewill_map.write().await;

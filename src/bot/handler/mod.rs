@@ -1,4 +1,4 @@
-use commands::Data;
+pub use commands::Data;
 use serenity::{
     all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
     async_trait,
@@ -20,7 +20,7 @@ impl Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        log::info!("{} is connected!", ready.user.name);
 
         ctx.set_presence(None, serenity::all::OnlineStatus::Online);
     }
@@ -30,15 +30,15 @@ impl EventHandler for Handler {
     //
     //     if is_dm {
     //         // someone is typing in MY dms
-    //         println!("User {} is typing in DMs", event.user_id);
-    //         println!("Channel ID: {:?}", event.channel_id);
+    //         log::info!("User {} is typing in DMs", event.user_id);
+    //         log::info!("Channel ID: {:?}", event.channel_id);
     //
     //         let typing = ctx.http.start_typing(event.channel_id);
     //
     //         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     //
     //         if let Err(why) = event.channel_id.say(&ctx.http, "hey... you up too?").await {
-    //             println!("Error sending message: {why:?}");
+    //             log::info!("Error sending message: {why:?}");
     //         }
     //
     //         typing.stop();
@@ -55,7 +55,7 @@ impl EventHandler for Handler {
                 let e = self.disable_buttons(&mut component, &ctx).await;
 
                 if let Err(why) = e {
-                    println!("error editing message: {why:?}");
+                    log::error!("error editing message: {why:?}");
                     return;
                 }
 
@@ -66,13 +66,16 @@ impl EventHandler for Handler {
                     "prev" => self.prev(component, ctx).await,
                     "next" => self.next(component, ctx).await,
                     _ => {
-                        println!("unknown custom_id: {:?}", component.data.custom_id);
+                        log::warn!(
+                            "unknown custom_id \"{:?}\", ignoring",
+                            component.data.custom_id
+                        );
                         Ok(())
                     }
                 };
 
                 if let Err(why) = result {
-                    println!("error handling interaction: {why:?}");
+                    log::error!("error handling interaction: {why:?}");
                     return;
                 }
             }

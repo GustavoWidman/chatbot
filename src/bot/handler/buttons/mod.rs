@@ -19,23 +19,28 @@ impl Handler {
             component
                 .message
                 .components
-                .clone()
-                .into_iter()
-                .flat_map(|c| c.components)
+                .iter()
+                .flat_map(|c| &c.components)
                 .filter_map(|c| match c {
                     ActionRowComponent::Button(button) => Some(button),
                     _ => None,
                 })
                 .filter_map(|button| {
-                    if let ButtonKind::NonLink { custom_id, style } = button.data {
+                    if let ButtonKind::NonLink { custom_id, style } = &button.data {
                         Some(
                             CreateButton::new(custom_id)
                                 .disabled(true)
-                                .label(button.label.unwrap_or("".to_string()))
-                                .emoji(button.emoji.unwrap_or(
+                                .label(
+                                    button
+                                        .label
+                                        .as_ref()
+                                        .map(|l| l.clone())
+                                        .unwrap_or("".to_string()),
+                                )
+                                .emoji(button.emoji.as_ref().map(|e| e.clone()).unwrap_or(
                                     serenity::all::ReactionType::Unicode("🔄".to_string()),
                                 ))
-                                .style(style),
+                                .style(*style),
                         )
                     } else {
                         None

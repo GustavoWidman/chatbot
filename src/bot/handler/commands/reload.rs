@@ -1,5 +1,7 @@
 use poise::CreateReply;
 
+use tokio::sync::RwLock;
+
 use super::{Context, Error};
 use crate::chat;
 
@@ -17,11 +19,11 @@ pub(super) async fn reload(ctx: Context<'_>) -> Result<(), Error> {
             config,
             ctx.author().id,
             None,
-            Some(engine.into_context()),
+            Some(engine.into_inner().into_context()),
         ),
         None => chat::engine::ChatEngine::new(config, ctx.author().id),
     };
-    user_map.insert(ctx.author().clone(), engine);
+    user_map.insert(ctx.author().clone(), RwLock::new(engine));
 
     ctx.send(
         CreateReply::default()

@@ -1,8 +1,6 @@
-use std::vec;
+use serenity::all::{Context, CreateButton, CreateMessage, Message};
 
-use serenity::all::{Context, CreateButton, CreateMessage, EditMessage, Message};
-
-use crate::chat::{self, engine::ContextType};
+use crate::chat::engine::{ContextType, EngineGuard};
 
 use super::super::Handler;
 
@@ -19,12 +17,8 @@ impl Handler {
 
         let typing = ctx.http.start_typing(msg.channel_id);
 
-        let mut user_map = data.user_map.write().await;
-        let engine = user_map.entry(msg.author.clone()).or_insert_with({
-            data.config.write().await.update();
-            let config = data.config.read().await.clone();
-            || chat::engine::ChatEngine::new(config, msg.author.id)
-        });
+        let guard = EngineGuard::lock(&data, msg.author).await;
+        let mut engine = guard.engine().await.write().await;
 
         let m = match engine
             .user_prompt(Some(msg.content.clone()), Some(ContextType::User))
@@ -59,13 +53,13 @@ impl Handler {
                         Ok(msg)
                     }
                     Err(why) => {
-                        println!("Error sending message: {why:?}");
+                        log::error!("Error sending message: {why:?}");
                         Err(why)
                     }
                 }
             }
             Err(why) => {
-                println!("Error generating response: {why:?}");
+                log::error!("Error generating response: {why:?}");
                 msg.channel_id
                     .say(ctx.http.clone(), "error generating response")
                     .await

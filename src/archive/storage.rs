@@ -2,13 +2,12 @@ use std::collections::HashMap;
 
 use qdrant_client::{
     qdrant::{
-        CreateCollectionBuilder, Distance, PointStruct, SearchParamsBuilder, SearchPointsBuilder,
-        UpsertPointsBuilder, Value, VectorParamsBuilder,
+        CreateCollectionBuilder, Distance, PointStruct, SearchPointsBuilder, UpsertPointsBuilder,
+        Value, VectorParamsBuilder,
     },
     Payload, Qdrant,
 };
-use serde_json::json;
-use serenity::{all::UserId, json};
+use serenity::all::UserId;
 
 use crate::config::structure::LLMConfig;
 
@@ -109,7 +108,7 @@ impl MemoryStorage {
             .result
             .into_iter()
             .filter_map(|point| {
-                println!("payload: {:?}\nscore: {:?}", point.payload, point.score);
+                log::info!("payload: {:?}\nscore: {:?}", point.payload, point.score);
                 if point.score > self.settings.similarity_threshold {
                     let payload = point.payload;
                     let memory = payload.get("memory")?.as_str()?;

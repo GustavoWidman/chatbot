@@ -79,7 +79,7 @@ impl ChatContext {
     async fn drain_overflow(&mut self) -> Option<Vec<ChatMessage>> {
         if self.messages.len() >= self.system_prompt.max_stm {
             let to_remove = self.messages.len() - ((self.system_prompt.max_stm * 4) / 5);
-            println!("context close to or full, draining {to_remove} messages");
+            log::info!("context close to or full, draining {to_remove} messages");
             Some(
                 self.messages
                     .drain(0..to_remove)

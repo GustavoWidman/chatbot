@@ -152,7 +152,7 @@ impl ChatClient {
         //! for debugging
         // for message in context.iter() {
         //     if message.role == "user" || message.role == "assistant" {
-        //         println!("{}: {}", message.role, message.content);
+        //         log::info!("{}: {}", message.role, message.content);
         //     }
         // }
 
@@ -178,7 +178,7 @@ impl ChatClient {
         }
 
         let result = self.client.chat_completion(req).await.map_err(|e| {
-            println!("error: {:?}", e);
+            log::error!("error: {:?}", e);
             e
         })?;
 
@@ -190,7 +190,7 @@ impl ChatClient {
 
         if let Some(tool_calls) = first_choice.message.tool_calls {
             for tool_call in tool_calls {
-                println!("tool call: {:?}", tool_call);
+                log::info!("tool call: {:?}", tool_call);
 
                 if tool_call.function.name == Some("memory_recall".to_owned()) {
                     let arguments = tool_call
@@ -274,7 +274,7 @@ impl ChatClient {
             .summarize(context.clone(), user_name, assistant_name)
             .await?;
 
-        println!("summary: {}", summary);
+        log::info!("summary: {}", summary);
 
         let embedding = self.embed(summary.clone()).await?;
 

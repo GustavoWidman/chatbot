@@ -6,8 +6,8 @@ use serenity::all::{MessageId, UserId};
 
 use crate::config::store::ChatBotConfig;
 
-use super::{
-    client::ChatClient,
+use super::super::{
+    client::{ChatClient, PromptResult},
     context::{ChatContext, ChatMessage},
 };
 
@@ -68,7 +68,7 @@ impl ChatEngine {
             };
 
             if let Some(drained) = drained {
-                println!("draining {drained:?}");
+                log::info!("draining {drained:?}");
                 self.client
                     .store(
                         drained,
@@ -93,7 +93,7 @@ impl ChatEngine {
                     if i + 1 >= retries {
                         return Err(why);
                     } else {
-                        println!("error: {why:?}, retrying");
+                        log::warn!("error: {why:?}, retrying");
                         i += 1;
                         continue;
                     }
@@ -101,18 +101,18 @@ impl ChatEngine {
             };
 
             match response {
-                super::client::PromptResult::Message(completion_message) => {
+                PromptResult::Message(completion_message) => {
                     if completion_message.content.len() > 2000 {
                         i += 1;
-                        println!("too big, retry #{i}");
+                        log::warn!("too big, retry #{i}");
                         continue;
                     } else {
                         return Ok(completion_message);
                     }
                 }
-                super::client::PromptResult::MemoryRecall((query, recalled_memories)) => {
+                PromptResult::MemoryRecall((query, recalled_memories)) => {
                     has_recalled = true;
-                    println!("recalled memories: {recalled_memories:?}");
+                    log::info!("recalled memories: {recalled_memories:?}");
                     self.context
                         .add_long_term_memories(recalled_memories.clone());
                     self.context.add_message(
@@ -158,8 +158,8 @@ impl ChatEngine {
                         None::<u64>,
                     );
                 }
-                super::client::PromptResult::MemoryStore(memory) => {
-                    println!("memory stored: {memory}");
+                PromptResult::MemoryStore(memory) => {
+                    log::info!("memory stored: {memory}");
 
                     self.context.add_message(
                         ChatMessage {

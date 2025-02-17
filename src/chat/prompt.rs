@@ -302,21 +302,6 @@ impl SystemPromptBuilder {
         }
     }
 
-    // pub fn user_about(mut self, user_about: String) -> Self {
-    //     self.user_about = Some(user_about);
-    //     self
-    // }
-
-    pub fn timezone(mut self, timezone: Tz) -> Self {
-        self.timezone = Some(timezone);
-        self
-    }
-
-    pub fn language(mut self, language: String) -> Self {
-        self.language = Some(language);
-        self
-    }
-
     pub fn build(mut self, time_since_last: Duration, recalling: bool) -> SystemPrompt {
         let time = if let Some(timezone) = self.timezone {
             chrono::Utc::now()
@@ -433,7 +418,7 @@ impl SystemPromptBuilder {
 
         if let Some(long_term_memory) = self.long_term_memory {
             if long_term_memory.len() >= 1 {
-                println!("loaded long term memories: {}", long_term_memory.len());
+                log::info!("loaded long term memories: {}", long_term_memory.len());
             }
             self.long_term_memory = Some(
                 long_term_memory
