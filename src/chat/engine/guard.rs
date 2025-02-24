@@ -24,7 +24,7 @@ impl<'a> EngineGuard<'a> {
                 let mut user_map = data.user_map.write().await;
                 data.config.write().await.update();
                 let config = data.config.read().await.clone();
-                let engine = ChatEngine::new(config, user.id);
+                let engine = ChatEngine::new(config, user.id).await;
 
                 user_map.insert(user.clone(), RwLock::new(engine));
             }

@@ -24,7 +24,10 @@ impl Handler {
             bail!("message is already at the end of the context");
         }
 
-        let content = message.forward().content.clone();
+        let content = message
+            .forward()
+            .content()
+            .ok_or(anyhow::anyhow!("message does not have a content"))?;
 
         let (can_go_fwd, emoji) = match message.forward {
             true => ("next", '⏩'),

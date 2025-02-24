@@ -4,4 +4,4 @@ mod context;
 pub mod engine;
 pub mod prompt;
 
-pub use context::{ChatContext, ChatMessage};
+pub use context::ChatMessage;

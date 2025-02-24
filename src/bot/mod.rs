@@ -1,6 +1,6 @@
 use anyhow::Result;
 use handler::Handler;
-use serenity::{all::GatewayIntents, Client};
+use serenity::{Client, all::GatewayIntents};
 
 use crate::config::store::ChatBotConfig;
 pub use handler::Data;

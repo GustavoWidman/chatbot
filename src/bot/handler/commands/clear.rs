@@ -16,15 +16,16 @@ pub(super) async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         .and_modify({
             data.config.write().await.update();
             let config = data.config.read().await.clone();
+            let new_engine = chat::engine::ChatEngine::new(config, ctx.author().id).await;
             |engine| {
-                *engine = RwLock::new(chat::engine::ChatEngine::new(config, ctx.author().id));
+                *engine = RwLock::new(new_engine);
             }
         })
         .or_insert_with({
             data.config.write().await.update();
-            let mut config = data.config.read().await.clone();
-            config.update();
-            || RwLock::new(chat::engine::ChatEngine::new(config, ctx.author().id))
+            let config = data.config.read().await.clone();
+            let engine = chat::engine::ChatEngine::new(config, ctx.author().id).await;
+            || RwLock::new(engine)
         });
 
     let mut freewill_map = data.freewill_map.write().await;

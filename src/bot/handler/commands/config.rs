@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
 use poise::CreateReply;
-use qdrant_client::qdrant::value;
 
 use super::{Context, Error};
 
@@ -12,16 +11,15 @@ pub enum KeyChoice {
     Model,
     #[name = "Embedding Model"]
     EmbeddingModel,
-    #[name = "Embedding Custom URL"]
-    EmbeddingCustomUrl,
+    #[name = "Embedding Provider"]
+    EmbeddingProvider,
     #[name = "Embedding API Key"]
     EmbeddingApiKey,
     #[name = "Use Tools"]
     UseTools,
     #[name = "Force Lowercase"]
     ForceLowercase,
-    #[name = "Custom URL"]
-    CustomUrl,
+    Provider,
     #[name = "Max Tokens"]
     MaxTokens,
     Temperature,
@@ -45,11 +43,11 @@ impl Display for KeyChoice {
             Self::ApiKey => write!(f, "API Key"),
             Self::Model => write!(f, "Model"),
             Self::EmbeddingModel => write!(f, "Embedding Model"),
-            Self::EmbeddingCustomUrl => write!(f, "Embedding Custom URL"),
+            Self::EmbeddingProvider => write!(f, "Embedding Provider"),
             Self::EmbeddingApiKey => write!(f, "Embedding API Key"),
             Self::UseTools => write!(f, "Use Tools"),
             Self::ForceLowercase => write!(f, "Force Lowercase"),
-            Self::CustomUrl => write!(f, "Custom URL"),
+            Self::Provider => write!(f, "Provider"),
             Self::MaxTokens => write!(f, "Max Tokens"),
             Self::Temperature => write!(f, "Temperature"),
             Self::TopP => write!(f, "Top P"),
@@ -89,11 +87,11 @@ pub(super) async fn config(
                 KeyChoice::EmbeddingModel => {
                     config.llm.embedding_model = value.clone();
                 }
-                KeyChoice::EmbeddingCustomUrl => {
+                KeyChoice::EmbeddingProvider => {
                     if value.trim().is_empty() {
-                        config.llm.embedding_custom_url = None;
+                        config.llm.embedding_provider = None;
                     } else {
-                        config.llm.embedding_custom_url = Some(value.clone());
+                        config.llm.embedding_provider = Some(value.clone().try_into()?);
                     }
                 }
                 KeyChoice::EmbeddingApiKey => {
@@ -127,18 +125,14 @@ pub(super) async fn config(
                             })?);
                     }
                 }
-                KeyChoice::CustomUrl => {
-                    if value.trim().is_empty() {
-                        config.llm.custom_url = None;
-                    } else {
-                        config.llm.custom_url = Some(value.clone());
-                    }
+                KeyChoice::Provider => {
+                    config.llm.provider = value.clone().try_into()?;
                 }
                 KeyChoice::MaxTokens => {
                     if value.trim().is_empty() {
                         config.llm.max_tokens = None;
                     } else {
-                        config.llm.max_tokens = Some(value.parse::<i64>().map_err(|_| {
+                        config.llm.max_tokens = Some(value.parse::<u64>().map_err(|_| {
                             anyhow::anyhow!(
                                 "Invalid value \"{value}\", please provide a valid number"
                             )
@@ -171,7 +165,7 @@ pub(super) async fn config(
                     if value.trim().is_empty() {
                         config.llm.vector_size = None;
                     } else {
-                        config.llm.vector_size = Some(value.parse::<u64>().map_err(|_| {
+                        config.llm.vector_size = Some(value.parse::<usize>().map_err(|_| {
                             anyhow::anyhow!(
                                 "Invalid value \"{value}\", please provide a valid number"
                             )
@@ -245,7 +239,10 @@ pub(super) async fn config(
             KeyChoice::ApiKey => Some(format!("||{}||", config.llm.api_key)),
             KeyChoice::Model => Some(config.llm.model.clone()),
             KeyChoice::EmbeddingModel => Some(config.llm.embedding_model.clone()),
-            KeyChoice::EmbeddingCustomUrl => config.llm.embedding_custom_url.clone(),
+            KeyChoice::EmbeddingProvider => config
+                .llm
+                .embedding_provider
+                .map(|provider| provider.to_string()),
             KeyChoice::EmbeddingApiKey => config
                 .llm
                 .embedding_api_key
@@ -256,7 +253,7 @@ pub(super) async fn config(
                 .force_lowercase
                 .map(|force_lowercase| force_lowercase.to_string()),
             KeyChoice::UseTools => config.llm.use_tools.map(|use_tools| use_tools.to_string()),
-            KeyChoice::CustomUrl => config.llm.custom_url.clone(),
+            KeyChoice::Provider => Some(config.llm.provider.to_string()),
             KeyChoice::MaxTokens => config
                 .llm
                 .max_tokens

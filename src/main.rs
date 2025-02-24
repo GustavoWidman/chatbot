@@ -1,6 +1,7 @@
+#![feature(impl_trait_in_assoc_type)]
+
 use std::path::PathBuf;
 
-use chat::ChatMessage;
 use config::store::ChatBotConfig;
 use log::info;
 

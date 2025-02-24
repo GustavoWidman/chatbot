@@ -1,8 +1,7 @@
-use std::vec;
-
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use branch_context::{Message, Messages};
 use indexmap::IndexMap;
+use rig::message::{Message as RigMessage, UserContent};
 use serenity::all::MessageId;
 
 use crate::{chat::prompt::SystemPromptBuilder, utils};
@@ -12,6 +11,13 @@ use super::message::ChatMessage;
 pub struct ChatContext {
     messages: IndexMap<u64, Messages<ChatMessage>>,
     pub system_prompt: SystemPromptBuilder,
+}
+
+pub struct ContextWindow {
+    pub user_prompt: Option<ChatMessage>,
+    pub system_prompt: String,
+    pub history: Vec<ChatMessage>,
+    pub overflow: Option<Vec<ChatMessage>>,
 }
 
 impl ChatContext {
@@ -34,8 +40,7 @@ impl ChatContext {
     pub fn add_user_message(&mut self, message: String, id: MessageId) {
         self.add_message(
             ChatMessage {
-                role: "user".to_string(),
-                content: message,
+                inner: RigMessage::user(message),
                 ..Default::default()
             },
             Some(id),
@@ -45,29 +50,42 @@ impl ChatContext {
     pub fn latest(&self) -> Option<&Messages<ChatMessage>> {
         self.messages.last().map(|(_, m)| m)
     }
-    pub fn latest_with_role(&self, user: String) -> Option<&Messages<ChatMessage>> {
-        self.messages
-            .iter()
-            .rev()
-            .find(|(_, m)| m.selected().role == user)
-            .map(|(_, m)| m)
-    }
 
+    // #[allow(unused)]
+    /// Returns the latest message with the given role.
+    // pub fn latest_with_role(&self, user: String) -> Option<&Messages<ChatMessage>> {
+    //     self.messages
+    //         .iter()
+    //         .rev()
+    //         .find(|(_, m)| m.selected().role == user)
+    //         .map(|(_, m)| m)
+    // }
+
+    #[allow(unused)]
+    /// Returns the message with the given id (not index, if you want the index use [ChatContext::get])
     pub fn find(&self, id: impl Into<u64>) -> Option<&Messages<ChatMessage>> {
         self.messages.get(&id.into())
     }
+    #[allow(unused)]
+    /// Returns the message at the given index (not id, if you want the id use [ChatContext::find])
     pub fn get(&self, index: usize) -> Option<&Messages<ChatMessage>> {
         self.messages.get_index(index).map(|(_, m)| m)
     }
+    /// Same as [ChatContext::find] but for mutable references
     pub fn find_mut(&mut self, id: impl Into<u64>) -> Option<&mut Messages<ChatMessage>> {
         self.messages.get_mut(&id.into())
     }
+    #[allow(unused)]
+    /// Same as [ChatContext::get] but for mutable references
     pub fn get_mut(&mut self, index: usize) -> Option<&mut Messages<ChatMessage>> {
         self.messages.get_index_mut(index).map(|(_, m)| m)
     }
+    /// Finds message with the given id, returning the index, the id, and the message itself.
     pub fn find_full(&self, id: impl Into<u64>) -> Option<(usize, &u64, &Messages<ChatMessage>)> {
         self.messages.get_full(&id.into())
     }
+    #[allow(unused)]
+    /// Same as [ChatContext::find_full] but for mutable references to the message.
     pub fn find_full_mut(
         &mut self,
         id: impl Into<u64>,
@@ -91,23 +109,19 @@ impl ChatContext {
         }
     }
 
-    pub async fn get_context(
-        &mut self,
-        recalling: bool,
-    ) -> (Vec<ChatMessage>, Option<Vec<ChatMessage>>) {
+    pub async fn get_context(&mut self) -> Result<ContextWindow> {
         if self.messages.is_empty() {
             let system_prompt = self
                 .system_prompt
                 .clone()
-                .build(chrono::Duration::seconds(0), recalling);
+                .build(chrono::Duration::seconds(0));
 
-            let context = vec![ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-                ..Default::default()
-            }];
-
-            return (context, None);
+            return Ok(ContextWindow {
+                history: vec![],
+                overflow: None,
+                system_prompt: system_prompt.to_string(),
+                user_prompt: None,
+            });
         }
 
         // Add the messages
@@ -122,33 +136,25 @@ impl ChatContext {
         let system_prompt = self.system_prompt.clone().build(
             // unwrapping is safe because we know the context is not empty
             self.time_since_last().unwrap(),
-            recalling,
         );
 
-        let mut context = vec![ChatMessage {
-            role: "system".to_string(),
-            content: system_prompt.to_string(),
-            ..Default::default()
-        }];
-        // let mut context = vec![]; // todo for testing
-        context.extend(ctx);
-
-        (context, drained)
+        Ok(ContextWindow {
+            user_prompt: None,
+            system_prompt: system_prompt.to_string(),
+            history: ctx,
+            overflow: drained,
+        })
     }
 
     // gets context but excludes the last message and the user prompt is taken as string-only
     // regenerating never drains, because it does not increase the STM size, so .1 is always None
-    pub async fn get_regen_context(
-        &mut self,
-        message_id: MessageId,
-        recalling: bool,
-    ) -> Result<(Vec<ChatMessage>, Option<Vec<ChatMessage>>)> {
+    pub async fn get_regen_context(&mut self, message_id: MessageId) -> Result<ContextWindow> {
         let (index, _, _) = self
             .find_full(message_id)
             .ok_or(anyhow!("message not found"))?;
 
         // get from 0..index
-        let ctx = self
+        let mut ctx = self
             .messages
             .get_range(0..index)
             .ok_or(anyhow!("context not found"))?
@@ -156,48 +162,62 @@ impl ChatContext {
             .map(|(_, messages)| messages.selected().clone())
             .collect::<Vec<_>>();
 
+        // Extract the last text message from the user as the prompt
+        let last_message = ctx
+            .iter()
+            .rposition(|msg| {
+                matches!(
+                    msg.inner,
+                    RigMessage::User {
+                        content: ref c
+                    } if matches!(c.first(), UserContent::Text(_))
+                )
+            })
+            .map(|idx| ctx.remove(idx))
+            .ok_or_else(|| anyhow::anyhow!("No user text messages found for prompting"))?;
+
         let system_prompt = self.system_prompt.clone().build(
             // unwrapping is safe because we know the context is not empty
             self.time_since_last().unwrap(),
-            recalling,
         );
-
-        let mut context = vec![ChatMessage {
-            role: "system".to_string(),
-            content: system_prompt.to_string(),
-            ..Default::default()
-        }];
-        // let mut context = vec![]; // todo for testing
-        context.extend(ctx);
 
         // if let Some(pos) = context.iter().rposition(|m| m.role == "assistant") {
         //     context.remove(pos);
         // }
 
-        Ok((context, None))
+        Ok(ContextWindow {
+            user_prompt: Some(last_message),
+            history: ctx,
+            system_prompt: system_prompt.to_string(),
+            overflow: None, // there is no overflow when regenerating
+        })
     }
 
-    pub async fn freewill_context(
-        &mut self,
-        recalling: bool,
-    ) -> Result<(Vec<ChatMessage>, Option<Vec<ChatMessage>>)> {
-        let (mut context, drained) = self.get_context(recalling).await;
+    pub async fn freewill_context(&mut self) -> Result<ContextWindow> {
+        let ContextWindow {
+            history,
+            overflow,
+            system_prompt,
+            ..
+        } = self.get_context().await?;
 
         let message = ChatMessage {
-            role: "user".to_string(),
-            content: format!(
+            inner: RigMessage::user(format!(
                 "*it's been around {} since you last said something, and the user did not respond. your next response should attempt to pull the user back into the conversation. please respond once again, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. your response should only contain the actual response, not your thoughts or anything else.*\n\n\"...\"",
                 utils::time_to_string(self.time_since_last()?)
-            ),
+            )),
             ..Default::default()
         };
 
         // id-less message
         self.add_message(message.clone(), None::<u64>);
 
-        context.push(message);
-
-        Ok((context, drained))
+        Ok(ContextWindow {
+            user_prompt: Some(message),
+            history,
+            system_prompt,
+            overflow,
+        })
     }
 
     pub fn time_since_last(&self) -> anyhow::Result<chrono::Duration> {
@@ -208,6 +228,7 @@ impl ChatContext {
         Ok(chrono::Utc::now() - last.selected().sent_at)
     }
 
+    #[allow(unused)]
     pub fn add_long_term_memories(&mut self, memories: Vec<String>) {
         self.system_prompt.add_long_term_memories(memories);
     }

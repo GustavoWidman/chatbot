@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use qdrant_client::{
+    Payload, Qdrant,
     qdrant::{
         CreateCollectionBuilder, Distance, PointStruct, SearchPointsBuilder, UpsertPointsBuilder,
         Value, VectorParamsBuilder,
     },
-    Payload, Qdrant,
 };
 use serenity::all::UserId;
 
@@ -22,7 +22,7 @@ pub struct MemoryStorage {
 }
 
 impl MemoryStorage {
-    pub fn new(config: &LLMConfig) -> Self {
+    pub fn new(config: &LLMConfig, vector_size: u64) -> Self {
         let client = Qdrant::from_url(&format!(
             "http{}://{}:{}",
             match config.qdrant_https.unwrap_or(false) {
@@ -39,7 +39,7 @@ impl MemoryStorage {
         MemoryStorage {
             client,
             settings: MemorySettings {
-                vector_size: config.vector_size.unwrap_or(256),
+                vector_size,
                 similarity_threshold: config.similarity_threshold.unwrap_or(0.5),
             },
         }
@@ -90,9 +90,14 @@ impl MemoryStorage {
 
     pub async fn search(
         &self,
-        embedding: Vec<f32>,
+        embedding: Vec<impl Into<f32>>,
         user_id: UserId,
     ) -> anyhow::Result<Vec<String>> {
+        let embedding = embedding
+            .into_iter()
+            .map(|x| x.into())
+            .collect::<Vec<f32>>();
+
         let collection_name = self.try_create_collection(user_id).await?;
 
         let search_result = self

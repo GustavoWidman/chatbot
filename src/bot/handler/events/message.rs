@@ -20,7 +20,7 @@ impl Handler {
         let guard = EngineGuard::lock(&data, msg.author).await;
         let mut engine = guard.engine().await.write().await;
 
-        let m = match engine
+        let _ = match engine
             .user_prompt(Some(msg.content.clone()), Some(ContextType::User))
             .await
         {
@@ -28,7 +28,8 @@ impl Handler {
                 engine.add_user_message(msg.content, msg.id);
 
                 let message = CreateMessage::new()
-                    .content(response.content.clone())
+                    // unwrap is safe because user_prompt guarantees a content
+                    .content(response.content().unwrap())
                     .button(
                         CreateButton::new("prev")
                             .label("")

@@ -1,8 +1,8 @@
 use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
 
 use crate::chat::{
-    engine::{ContextType, EngineGuard},
     ChatMessage,
+    engine::{ContextType, EngineGuard},
 };
 
 use super::super::Handler;
@@ -37,7 +37,9 @@ impl Handler {
                 .user_prompt(None, Some(ContextType::Regen(component.message.id)))
                 .await?;
 
-            let content = response.content.clone();
+            let content = response
+                .content()
+                .ok_or(anyhow::anyhow!("message does not have a content"))?;
 
             component
                 .message

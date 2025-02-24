@@ -1,37 +1,41 @@
 use std::ops::{Deref, DerefMut};
 
-use openai_api_rs::v1::chat_completion::{ToolCall, ToolCallFunction};
-use serde_json::json;
+use anyhow::anyhow;
+use rig::message::Message as RigMessage;
 use serenity::all::{MessageId, UserId};
 
-use crate::config::store::ChatBotConfig;
-
-use super::super::{
-    client::{ChatClient, PromptResult},
-    context::{ChatContext, ChatMessage},
+use crate::{
+    chat::{
+        client::{CompletionAgent, CompletionResult},
+        context::ContextWindow,
+    },
+    config::store::ChatBotConfig,
 };
 
+use super::super::context::{ChatContext, ChatMessage};
+
 pub struct ChatEngine {
-    client: ChatClient,
+    client: CompletionAgent,
     context: ChatContext,
 }
 
 impl ChatEngine {
-    pub fn new(config: ChatBotConfig, user_id: UserId) -> Self {
-        let client = ChatClient::new(&config.llm, user_id);
+    pub async fn new(config: ChatBotConfig, user_id: UserId) -> Self {
         let context = ChatContext::new(&config.prompt);
+        let client = CompletionAgent::new(config.llm.clone(), user_id).await;
 
         Self { client, context }
     }
 
     // initializes with
-    pub fn new_with(
+    pub async fn new_with(
         config: ChatBotConfig,
         user_id: UserId,
-        client: Option<ChatClient>,
+        client: Option<CompletionAgent>,
         context: Option<ChatContext>,
     ) -> Self {
-        let client = client.unwrap_or(ChatClient::new(&config.llm, user_id));
+        // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
+        let client = client.unwrap_or(CompletionAgent::new(config.llm.clone(), user_id).await);
         let context = context.unwrap_or(ChatContext::new(&config.prompt));
 
         Self { client, context }
@@ -41,33 +45,25 @@ impl ChatEngine {
         self.context
     }
 
-    pub fn into_client(self) -> ChatClient {
-        self.client
-    }
-
     pub async fn user_prompt(
         &mut self,
-        prompt: Option<String>,
+        mut prompt: Option<String>,
         context: Option<ContextType>,
     ) -> anyhow::Result<ChatMessage> {
         let retries = 5;
 
         let mut i = 0;
-        let mut has_recalled = false;
         while i < retries {
-            let (mut context, drained): (Vec<ChatMessage>, Option<Vec<ChatMessage>>) = match context
-            {
-                Some(ContextType::User) => self.context.get_context(!has_recalled).await,
-                Some(ContextType::Freewill) => self.context.freewill_context(!has_recalled).await?,
+            let context: ContextWindow = match context {
+                Some(ContextType::User) => self.context.get_context().await?,
+                Some(ContextType::Freewill) => self.context.freewill_context().await?,
                 Some(ContextType::Regen(message_id)) => {
-                    self.context
-                        .get_regen_context(message_id, !has_recalled)
-                        .await?
+                    self.context.get_regen_context(message_id).await?
                 }
-                None => self.context.get_context(!has_recalled).await,
+                None => self.context.get_context().await?,
             };
 
-            if let Some(drained) = drained {
+            if let Some(drained) = context.overflow {
                 log::info!("draining {drained:?}");
                 self.client
                     .store(
@@ -78,22 +74,31 @@ impl ChatEngine {
                     .await?;
             }
 
-            if let Some(prompt) = prompt.clone() {
-                context.push(ChatMessage {
-                    role: "user".to_string(),
-                    content: prompt,
+            let prompt = if let Some(prompt) = context.user_prompt {
+                Some(prompt)
+            } else if let Some(prompt) = prompt.clone() {
+                // we have to clone because of prior or future loops
+                Some(ChatMessage {
+                    inner: RigMessage::user(prompt),
                     ..Default::default()
-                });
+                })
+            } else {
+                None
             }
+            .ok_or(anyhow!("unable to get a user prompt"))?;
 
             // retry if we get an error as well, but only up to the max retries
-            let response = match self.client.prompt(context.clone(), !has_recalled).await {
+            let response = match self
+                .client
+                .completion(prompt, context.system_prompt, context.history)
+                .await
+            {
                 Ok(response) => response,
                 Err(why) => {
                     if i + 1 >= retries {
                         return Err(why);
                     } else {
-                        log::warn!("error: {why:?}, retrying");
+                        log::warn!("error:\n{why:?}\nretrying, attempt {i}");
                         i += 1;
                         continue;
                     }
@@ -101,98 +106,33 @@ impl ChatEngine {
             };
 
             match response {
-                PromptResult::Message(completion_message) => {
-                    if completion_message.content.len() > 2000 {
-                        i += 1;
-                        log::warn!("too big, retry #{i}");
-                        continue;
+                CompletionResult::Message(completion_message) => {
+                    let message = ChatMessage::from(completion_message);
+
+                    let content = message.content();
+
+                    if let Some(content) = content {
+                        if content.len() > 2000 {
+                            i += 1;
+                            log::warn!("too big, retry #{i}");
+                            continue;
+                        } else {
+                            return Ok(message);
+                        }
                     } else {
-                        return Ok(completion_message);
+                        log::error!("no content in message");
+                        continue;
                     }
                 }
-                PromptResult::MemoryRecall((query, recalled_memories)) => {
-                    has_recalled = true;
-                    log::info!("recalled memories: {recalled_memories:?}");
+                CompletionResult::Tool((call, response)) => {
                     self.context
-                        .add_long_term_memories(recalled_memories.clone());
-                    self.context.add_message(
-                        ChatMessage {
-                            role: "assistant".to_string(),
-                            content: " ".to_string(),
-                            tool_calls: Some(vec![ToolCall {
-                                id: "".to_string(),
-                                r#type: "function".to_string(),
-                                function: ToolCallFunction {
-                                    name: Some("memory_recall".to_string()),
-                                    arguments: Some(
-                                        json!({
-                                            "query": query,
-                                        })
-                                        .to_string(),
-                                    ),
-                                },
-                            }]),
-                            name: None,
-                            ..Default::default()
-                        },
-                        None::<u64>,
-                    );
+                        .add_message(ChatMessage::from(call), None::<u64>);
+                    self.context
+                        .add_message(ChatMessage::from(response), None::<u64>);
 
-                    let mut stringified_memories = recalled_memories
-                        .join("\n---\n")
-                        .trim_end_matches("\n---\n")
-                        .to_string();
+                    log::info!("called functions, prompting again");
 
-                    if stringified_memories.is_empty() {
-                        stringified_memories = "No memories found.".to_string()
-                    }
-
-                    self.context.add_message(
-                        ChatMessage {
-                            role: "function".to_string(),
-                            content: stringified_memories,
-                            name: Some("memory_recall".to_string()),
-                            tool_calls: None,
-                            ..Default::default()
-                        },
-                        None::<u64>,
-                    );
-                }
-                PromptResult::MemoryStore(memory) => {
-                    log::info!("memory stored: {memory}");
-
-                    self.context.add_message(
-                        ChatMessage {
-                            role: "assistant".to_string(),
-                            content: " ".to_string(),
-                            tool_calls: Some(vec![ToolCall {
-                                id: "".to_string(),
-                                r#type: "function".to_string(),
-                                function: ToolCallFunction {
-                                    name: Some("memory_store".to_string()),
-                                    arguments: Some(
-                                        json!({
-                                            "memory": memory,
-                                        })
-                                        .to_string(),
-                                    ),
-                                },
-                            }]),
-                            name: None,
-                            ..Default::default()
-                        },
-                        None::<u64>,
-                    );
-                    self.context.add_message(
-                        ChatMessage {
-                            role: "function".to_string(),
-                            content: "Memory stored successfully".to_string(),
-                            name: Some("memory_store".to_string()),
-                            tool_calls: None,
-                            ..Default::default()
-                        },
-                        None::<u64>,
-                    );
+                    continue;
                 }
             }
         }

@@ -15,13 +15,16 @@ pub(super) async fn reload(ctx: Context<'_>) -> Result<(), Error> {
 
     let mut user_map = data.user_map.write().await;
     let engine = match user_map.remove(ctx.author()) {
-        Some(engine) => chat::engine::ChatEngine::new_with(
-            config,
-            ctx.author().id,
-            None,
-            Some(engine.into_inner().into_context()),
-        ),
-        None => chat::engine::ChatEngine::new(config, ctx.author().id),
+        Some(engine) => {
+            chat::engine::ChatEngine::new_with(
+                config,
+                ctx.author().id,
+                None,
+                Some(engine.into_inner().into_context()),
+            )
+            .await
+        }
+        None => chat::engine::ChatEngine::new(config, ctx.author().id).await,
     };
     user_map.insert(ctx.author().clone(), RwLock::new(engine));
 

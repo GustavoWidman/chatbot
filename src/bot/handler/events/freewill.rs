@@ -93,7 +93,11 @@ impl Handler {
             log::info!("{:?}", response);
 
             let message = CreateMessage::new()
-                .content(response.content.clone())
+                .content(
+                    response
+                        .content()
+                        .ok_or(anyhow::anyhow!("message does not have a content"))?,
+                )
                 .button(
                     CreateButton::new("prev")
                         .label("")

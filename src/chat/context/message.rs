@@ -1,47 +1,66 @@
+use std::fmt::Display;
+
 use branch_context::{Message, Messages};
 use chrono::{DateTime, Utc};
-use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, MessageRole, ToolCall};
+use rig::message::{AssistantContent, Message as RigMessage, UserContent};
 
 #[derive(Debug, Clone)]
 pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
+    pub inner: RigMessage,
     pub sent_at: DateTime<Utc>,
-    pub name: Option<String>,
-    pub tool_calls: Option<Vec<ToolCall>>,
-    pub tool_call_id: Option<String>,
+}
+
+pub enum MessageRole {
+    User,
+    Assistant,
+}
+
+impl Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+        }
+    }
+}
+
+impl ChatMessage {
+    pub fn content(&self) -> Option<String> {
+        match &self.inner {
+            RigMessage::Assistant { content } => {
+                let content = content.first();
+
+                if let AssistantContent::Text(text) = content {
+                    Some(text.text)
+                } else {
+                    None
+                }
+            }
+            RigMessage::User { content } => {
+                let content = content.first();
+
+                if let UserContent::Text(text) = content {
+                    Some(text.text)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn role(&self) -> MessageRole {
+        match &self.inner {
+            RigMessage::User { .. } => MessageRole::User,
+            RigMessage::Assistant { .. } => MessageRole::Assistant,
+        }
+    }
 }
 
 impl Default for ChatMessage {
     fn default() -> Self {
         Self {
-            role: "user".to_string(),
-            content: "".to_string(),
+            inner: RigMessage::user(""),
             sent_at: Utc::now(),
-            name: None,
-            tool_calls: None,
-            tool_call_id: None,
-        }
-    }
-}
-
-impl Into<ChatCompletionMessage> for ChatMessage {
-    fn into(self) -> ChatCompletionMessage {
-        let role = match self.role.as_str() {
-            "system" => MessageRole::system,
-            "user" => MessageRole::user,
-            "assistant" => MessageRole::assistant,
-            "tool" => MessageRole::tool,
-            "function" => MessageRole::function,
-            _ => MessageRole::system,
-        };
-
-        chat_completion::ChatCompletionMessage {
-            role,
-            content: chat_completion::Content::Text(self.content),
-            name: self.name,
-            tool_calls: self.tool_calls,
-            tool_call_id: self.tool_call_id,
         }
     }
 }
@@ -56,5 +75,20 @@ impl Into<ChatMessage> for &Messages<ChatMessage> {
 impl Into<Message<ChatMessage>> for ChatMessage {
     fn into(self) -> Message<ChatMessage> {
         Message::new(self)
+    }
+}
+
+impl Into<RigMessage> for ChatMessage {
+    fn into(self) -> RigMessage {
+        self.inner
+    }
+}
+
+impl From<RigMessage> for ChatMessage {
+    fn from(message: RigMessage) -> Self {
+        Self {
+            inner: message,
+            sent_at: Utc::now(),
+        }
     }
 }

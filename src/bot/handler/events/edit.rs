@@ -1,6 +1,7 @@
+use rig::message::Message as RigMessage;
 use serenity::all::{Context, Message, MessageUpdateEvent};
 
-use crate::chat::{engine::EngineGuard, ChatMessage};
+use crate::chat::{ChatMessage, engine::EngineGuard};
 
 use super::super::Handler;
 
@@ -47,8 +48,7 @@ impl Handler {
 
         // push the new message and select it
         messages.push(ChatMessage {
-            role: "user".to_string(),
-            content: new_content,
+            inner: RigMessage::user(new_content),
             ..Default::default()
         });
     }

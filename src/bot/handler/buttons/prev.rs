@@ -24,7 +24,10 @@ impl Handler {
             bail!("message is already at the end of the context");
         }
 
-        let content = message.backward().content.clone();
+        let content = message
+            .backward()
+            .content()
+            .ok_or(anyhow::anyhow!("message does not have a content"))?;
 
         component
             .message
