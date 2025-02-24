@@ -107,7 +107,9 @@ impl CompletionAgent {
         };
 
         let request = CompletionRequest {
-            additional_params: None,
+            additional_params: Some(json!({
+                "top_p": self.config.top_p,
+            })),
             chat_history: context.into_iter().map(|x| x.into()).collect(),
             documents: vec![],
             max_tokens: self.config.max_tokens,
