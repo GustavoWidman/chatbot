@@ -13,7 +13,7 @@ impl Handler {
     ) -> anyhow::Result<()> {
         let data = self.data.clone();
 
-        let guard = EngineGuard::lock(&data, component.user).await;
+        let guard = EngineGuard::lock(&data, component.user).await?;
         let mut engine = guard.engine().await.write().await;
 
         let message = engine

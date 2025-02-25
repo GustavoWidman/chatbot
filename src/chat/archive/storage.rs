@@ -4,7 +4,7 @@ use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
         CreateCollectionBuilder, Distance, PointStruct, SearchPointsBuilder, UpsertPointsBuilder,
-        Value, VectorParamsBuilder,
+        Value, VectorParamsBuilder, vectors_config::Config,
     },
 };
 use serenity::all::UserId;
@@ -42,6 +42,40 @@ impl MemoryStorage {
                 vector_size,
                 similarity_threshold: config.similarity_threshold.unwrap_or(0.5),
             },
+        }
+    }
+
+    pub async fn health_check(&self, user_id: UserId) -> anyhow::Result<()> {
+        self.client.health_check().await?;
+
+        let collection_name = self.try_create_collection(user_id).await?;
+
+        let collection_info = self.client.collection_info(collection_name).await?;
+
+        let vector_size: u64 = async {
+            if let Config::Params(params) = collection_info
+                .result?
+                .config?
+                .params?
+                .vectors_config?
+                .config?
+            {
+                Some(params.size)
+            } else {
+                None
+            }
+        }
+        .await
+        .ok_or(anyhow::anyhow!("failed to get vector size"))?;
+
+        if vector_size != self.settings.vector_size {
+            Err(anyhow::anyhow!(
+                "vector size mismatch, expected {} but got {}",
+                self.settings.vector_size,
+                vector_size
+            ))
+        } else {
+            Ok(())
         }
     }
 
@@ -113,7 +147,11 @@ impl MemoryStorage {
             .result
             .into_iter()
             .filter_map(|point| {
-                log::info!("payload: {:?}\nscore: {:?}", point.payload, point.score);
+                log::info!(
+                    "payload:\n{}\nscore: {:?}",
+                    serde_json::to_string_pretty(&point.payload).ok()?,
+                    point.score
+                );
                 if point.score > self.settings.similarity_threshold {
                     let payload = point.payload;
                     let memory = payload.get("memory")?.as_str()?;

@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use serenity::all::UserId;
 use std::sync::Arc;
 
-use crate::{archive::storage::MemoryStorage, chat::client::providers::DynEmbeddingModel};
+use crate::chat::{archive::storage::MemoryStorage, client::providers::DynEmbeddingModel};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Memory Store error")]

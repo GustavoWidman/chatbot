@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use anyhow::anyhow;
 use rig::{
     OneOrMany,
     completion::{CompletionRequest, ToolDefinition},
@@ -11,8 +12,7 @@ use serde_json::json;
 use serenity::all::UserId;
 
 use crate::{
-    archive::storage::MemoryStorage,
-    chat::{ChatMessage, context::MessageRole},
+    chat::{ChatMessage, archive::storage::MemoryStorage, context::MessageRole},
     config::structure::LLMConfig,
 };
 
@@ -29,7 +29,7 @@ pub struct CompletionAgent {
 }
 
 impl CompletionAgent {
-    pub async fn new(config: LLMConfig, user_id: UserId) -> Self {
+    pub async fn new(config: LLMConfig, user_id: UserId) -> anyhow::Result<Self> {
         let client = config.provider.client(&config.api_key);
         let completion_model = Arc::new(client.completion_model(&config.model).await);
 
@@ -40,32 +40,32 @@ impl CompletionAgent {
             })
             .unwrap_or(client);
 
-        let (vector_size, embedding_model) = match config.vector_size {
+        let embedding_model = match config.vector_size {
             Some(vector_size) => {
                 let client = embedding_client
                     .embedding_model_with_ndims(&config.embedding_model, vector_size, None)
                     .await
-                    .unwrap();
+                    .ok_or(anyhow!("failed to create embedding model"))?;
 
-                let ndims = client.embed_text("a").await.unwrap().vec.len();
-
-                (ndims as u64, Arc::new(client))
+                Arc::new(client)
             }
             None => {
                 let client = embedding_client
                     .embedding_model(&config.embedding_model, None)
                     .await
-                    .unwrap();
+                    .ok_or(anyhow!("failed to create embedding model"))?;
 
-                let ndims = client.embed_text("a").await.unwrap().vec.len();
-
-                (ndims as u64, Arc::new(client))
+                Arc::new(client)
             }
         };
+
+        // test embedding model and obtain true vector size
+        let vector_size = embedding_model.embed_text("a").await?.vec.len() as u64;
 
         log::info!("vector size: {}", vector_size);
 
         let memory_storage = Arc::new(MemoryStorage::new(&config, vector_size));
+        memory_storage.health_check(user_id).await?;
 
         let recall =
             tools::MemoryRecall::new(embedding_model.clone(), memory_storage.clone(), user_id);
@@ -76,14 +76,16 @@ impl CompletionAgent {
         tools.insert(tools::MemoryRecall::NAME.to_string(), Box::new(recall));
         tools.insert(tools::MemoryStore::NAME.to_string(), Box::new(store));
 
-        Self {
+        log::info!("engine initialized successfully for {user_id}, health checks passed");
+
+        Ok(Self {
             completion_model,
             embedding_model,
             memory_storage,
             tools,
             user_id,
             config,
-        }
+        })
     }
 
     pub async fn completion(
@@ -113,7 +115,8 @@ impl CompletionAgent {
             chat_history: context.into_iter().map(|x| x.into()).collect(),
             documents: vec![],
             max_tokens: self.config.max_tokens,
-            preamble: Some(system_prompt),
+            // preamble: Some(system_prompt),
+            preamble: None, // todo testing
             temperature: self.config.temperature,
             tools,
             prompt: prompt.into(),

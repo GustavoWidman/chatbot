@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use poise::CreateReply;
 
-use super::{Context, Error};
+use crate::bot::handler::{events::HandlerResult, framework::Context};
 
 #[derive(Debug, poise::ChoiceParameter)]
 pub enum KeyChoice {
@@ -60,23 +60,14 @@ impl Display for KeyChoice {
     }
 }
 
-/// Rewrite keys of the LLM config
-#[poise::command(slash_command, prefix_command)]
-pub(super) async fn config(
-    ctx: Context<'_>,
-    #[description = "Config property"] key: KeyChoice,
-
-    #[description = "New value (if not provided, will print the current key value)"] value: Option<
-        String,
-    >,
-) -> Result<(), Error> {
+pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> HandlerResult<()> {
     let data = ctx.data().clone();
 
-    if let Some(value) = value {
-        let mut config = data.config.write().await;
-        config.update();
+    let result: anyhow::Result<()> = async {
+        if let Some(value) = value {
+            let mut config = data.config.write().await;
+            config.update();
 
-        if let Err(e) = {
             match key {
                 KeyChoice::ApiKey => {
                     config.llm.api_key = value.clone();
@@ -214,82 +205,77 @@ pub(super) async fn config(
 
             config.async_save().await?;
 
-            Ok::<(), anyhow::Error>(())
-        } {
             ctx.send(
                 CreateReply::default()
-                    .content(format!("Error updating the {key}: {}", e.to_string()))
+                    .content(format!("Successfully updated the {key} to \"{value}\""))
                     .ephemeral(true),
             )
             .await?;
+        } else {
+            let config = data.config.read().await;
 
-            return Ok(());
+            let value: Option<String> = match key {
+                KeyChoice::ApiKey => Some(format!("||{}||", config.llm.api_key)),
+                KeyChoice::Model => Some(config.llm.model.clone()),
+                KeyChoice::EmbeddingModel => Some(config.llm.embedding_model.clone()),
+                KeyChoice::EmbeddingProvider => config
+                    .llm
+                    .embedding_provider
+                    .map(|provider| provider.to_string()),
+                KeyChoice::EmbeddingApiKey => config
+                    .llm
+                    .embedding_api_key
+                    .clone()
+                    .map(|api_key| format!("||{}||", api_key)),
+                KeyChoice::ForceLowercase => config
+                    .llm
+                    .force_lowercase
+                    .map(|force_lowercase| force_lowercase.to_string()),
+                KeyChoice::UseTools => config.llm.use_tools.map(|use_tools| use_tools.to_string()),
+                KeyChoice::Provider => Some(config.llm.provider.to_string()),
+                KeyChoice::MaxTokens => config
+                    .llm
+                    .max_tokens
+                    .map(|max_tokens| max_tokens.to_string()),
+                KeyChoice::Temperature => config
+                    .llm
+                    .temperature
+                    .map(|temperature| temperature.to_string()),
+                KeyChoice::TopP => config.llm.top_p.map(|top_p| top_p.to_string()),
+                KeyChoice::VectorSize => config
+                    .llm
+                    .vector_size
+                    .map(|vector_size| vector_size.to_string()),
+                KeyChoice::SimilarityThreshold => config
+                    .llm
+                    .similarity_threshold
+                    .map(|similarity_threshold| similarity_threshold.to_string()),
+                KeyChoice::QdrantHost => Some(config.llm.qdrant_host.clone()),
+                KeyChoice::QdrantPort => config
+                    .llm
+                    .qdrant_port
+                    .map(|qdrant_port| qdrant_port.to_string()),
+                KeyChoice::QdrantHttps => config
+                    .llm
+                    .qdrant_https
+                    .map(|qdrant_https| qdrant_https.to_string()),
+            };
+
+            let content = match value {
+                Some(value) => format!("The value for {key} is {value}"),
+                None => format!("The value for {key} is not set"),
+            };
+
+            ctx.send(CreateReply::default().content(content).ephemeral(true))
+                .await?;
         }
 
-        ctx.send(
-            CreateReply::default()
-                .content(format!("Successfully updated the {key} to \"{value}\""))
-                .ephemeral(true),
-        )
-        .await?;
-    } else {
-        let config = data.config.read().await;
-
-        let value: Option<String> = match key {
-            KeyChoice::ApiKey => Some(format!("||{}||", config.llm.api_key)),
-            KeyChoice::Model => Some(config.llm.model.clone()),
-            KeyChoice::EmbeddingModel => Some(config.llm.embedding_model.clone()),
-            KeyChoice::EmbeddingProvider => config
-                .llm
-                .embedding_provider
-                .map(|provider| provider.to_string()),
-            KeyChoice::EmbeddingApiKey => config
-                .llm
-                .embedding_api_key
-                .clone()
-                .map(|api_key| format!("||{}||", api_key)),
-            KeyChoice::ForceLowercase => config
-                .llm
-                .force_lowercase
-                .map(|force_lowercase| force_lowercase.to_string()),
-            KeyChoice::UseTools => config.llm.use_tools.map(|use_tools| use_tools.to_string()),
-            KeyChoice::Provider => Some(config.llm.provider.to_string()),
-            KeyChoice::MaxTokens => config
-                .llm
-                .max_tokens
-                .map(|max_tokens| max_tokens.to_string()),
-            KeyChoice::Temperature => config
-                .llm
-                .temperature
-                .map(|temperature| temperature.to_string()),
-            KeyChoice::TopP => config.llm.top_p.map(|top_p| top_p.to_string()),
-            KeyChoice::VectorSize => config
-                .llm
-                .vector_size
-                .map(|vector_size| vector_size.to_string()),
-            KeyChoice::SimilarityThreshold => config
-                .llm
-                .similarity_threshold
-                .map(|similarity_threshold| similarity_threshold.to_string()),
-            KeyChoice::QdrantHost => Some(config.llm.qdrant_host.clone()),
-            KeyChoice::QdrantPort => config
-                .llm
-                .qdrant_port
-                .map(|qdrant_port| qdrant_port.to_string()),
-            KeyChoice::QdrantHttps => config
-                .llm
-                .qdrant_https
-                .map(|qdrant_https| qdrant_https.to_string()),
-        };
-
-        let content = match value {
-            Some(value) => format!("The value for {key} is {value}"),
-            None => format!("The value for {key} is not set"),
-        };
-
-        ctx.send(CreateReply::default().content(content).ephemeral(true))
-            .await?;
+        Ok(())
     }
+    .await;
 
-    Ok(())
+    match result {
+        Ok(_) => HandlerResult::ok(()),
+        Err(why) => HandlerResult::err(why, ctx),
+    }
 }

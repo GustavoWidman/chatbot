@@ -5,7 +5,7 @@ use serenity::all::{ChannelId, CreateButton, CreateMessage, Http, Message, User}
 use tokio::{task::JoinHandle, time};
 
 use crate::{
-    bot::handler::commands::InnerData,
+    bot::handler::framework::InnerData,
     chat::engine::{ContextType, EngineGuard},
 };
 
@@ -82,7 +82,12 @@ impl Handler {
         http: Arc<Http>,
     ) -> bool {
         log::debug!("freewilling");
-        let guard = EngineGuard::lock(&data, user).await;
+        let guard = if let Ok(engine) = EngineGuard::lock(&data, user).await {
+            engine
+        } else {
+            return false;
+        };
+
         let mut engine = guard.engine().await.write().await;
 
         let out: anyhow::Result<Message> = async {
@@ -132,7 +137,12 @@ impl Handler {
     }
 
     pub async fn should_freewill(data: Arc<InnerData>, user: User) -> bool {
-        let guard = EngineGuard::lock(&data, user).await;
+        let guard = if let Ok(engine) = EngineGuard::lock(&data, user).await {
+            engine
+        } else {
+            return false;
+        };
+
         let engine = guard.engine().await.read().await;
 
         let time_since_last = engine

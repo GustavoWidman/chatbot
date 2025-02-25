@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use serenity::all::UserId;
 
-use crate::{archive::storage::MemoryStorage, chat::client::providers::DynEmbeddingModel};
+use crate::chat::{archive::storage::MemoryStorage, client::providers::DynEmbeddingModel};
 
 #[derive(Deserialize)]
 pub struct Args {

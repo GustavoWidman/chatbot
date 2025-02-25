@@ -5,7 +5,6 @@ use log::info;
 
 extern crate proc_macro;
 
-mod archive;
 mod bot;
 mod chat;
 mod config;

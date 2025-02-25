@@ -1,12 +1,13 @@
-pub use commands::Data;
+use events::HandlerResult;
+pub use framework::Data;
 use serenity::{
     all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
     async_trait,
 };
 
 mod buttons;
-pub mod commands;
 mod events;
+pub mod framework;
 
 pub struct Handler {
     pub data: Data,
@@ -46,40 +47,14 @@ impl EventHandler for Handler {
     // }
 
     async fn message(&self, ctx: Context, msg: Message) {
-        self.on_message(ctx, msg).await;
+        if let HandlerResult::Err(error) = self.on_message(ctx, msg).await {
+            Self::on_error(error).await;
+        }
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        match interaction.into_message_component() {
-            Some(mut component) => {
-                let e = self.disable_buttons(&mut component, &ctx).await;
-
-                if let Err(why) = e {
-                    log::error!("error editing message: {why:?}");
-                    return;
-                }
-
-                let _ = component.defer(ctx.http.clone()).await;
-
-                let result = match component.data.custom_id.as_str() {
-                    "regen" => self.regen(component, ctx).await,
-                    "prev" => self.prev(component, ctx).await,
-                    "next" => self.next(component, ctx).await,
-                    _ => {
-                        log::warn!(
-                            "unknown custom_id \"{:?}\", ignoring",
-                            component.data.custom_id
-                        );
-                        Ok(())
-                    }
-                };
-
-                if let Err(why) = result {
-                    log::error!("error handling interaction: {why:?}");
-                    return;
-                }
-            }
-            _ => {}
+        if let HandlerResult::Err(error) = self.on_interaction(ctx, interaction).await {
+            Self::on_error(error).await;
         }
     }
 
@@ -90,6 +65,8 @@ impl EventHandler for Handler {
         new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
-        self.on_edit(ctx, old_if_available, new, event).await;
+        if let HandlerResult::Err(error) = self.on_edit(ctx, old_if_available, new, event).await {
+            Self::on_error(error).await;
+        }
     }
 }

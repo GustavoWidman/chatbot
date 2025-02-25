@@ -20,11 +20,11 @@ pub struct ChatEngine {
 }
 
 impl ChatEngine {
-    pub async fn new(config: ChatBotConfig, user_id: UserId) -> Self {
+    pub async fn new(config: ChatBotConfig, user_id: UserId) -> anyhow::Result<Self> {
         let context = ChatContext::new(&config.prompt);
-        let client = CompletionAgent::new(config.llm.clone(), user_id).await;
+        let client = CompletionAgent::new(config.llm.clone(), user_id).await?;
 
-        Self { client, context }
+        Ok(Self { client, context })
     }
 
     // initializes with
@@ -33,12 +33,12 @@ impl ChatEngine {
         user_id: UserId,
         client: Option<CompletionAgent>,
         context: Option<ChatContext>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
-        let client = client.unwrap_or(CompletionAgent::new(config.llm.clone(), user_id).await);
+        let client = client.unwrap_or(CompletionAgent::new(config.llm.clone(), user_id).await?);
         let context = context.unwrap_or(ChatContext::new(&config.prompt));
 
-        Self { client, context }
+        Ok(Self { client, context })
     }
 
     pub fn into_context(self) -> ChatContext {
@@ -47,7 +47,7 @@ impl ChatEngine {
 
     pub async fn user_prompt(
         &mut self,
-        mut prompt: Option<String>,
+        prompt: Option<String>,
         context: Option<ContextType>,
     ) -> anyhow::Result<ChatMessage> {
         let retries = 5;

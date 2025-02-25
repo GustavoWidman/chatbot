@@ -1,4 +1,5 @@
 use colog::format::CologStyle;
+use colored::Colorize;
 use env_logger::Builder;
 use log::{Level, LevelFilter};
 
@@ -14,6 +15,22 @@ impl CologStyle for CustomLevelTokens {
             Level::Trace => "TRC",
         }
     }
+
+    fn prefix_token(&self, level: &Level) -> String {
+        format!(
+            "{}{}{} {}{}{}",
+            "[".blue().bold(),
+            chrono::Local::now()
+                .format("%Y-%m-%d %H:%M:%S.%6f")
+                .to_string()
+                .white()
+                .bold(),
+            "]".blue().bold(),
+            "[".blue().bold(),
+            self.level_color(level, self.level_token(level)),
+            "]".blue().bold()
+        )
+    }
 }
 
 pub struct Logger;
@@ -23,7 +40,7 @@ impl Logger {
         Builder::new()
             .filter(Some("chatbot"), level.unwrap_or(LevelFilter::Info))
             .filter(Some("rig-core"), LevelFilter::Trace)
-            .filter(Some("reqwest"), LevelFilter::Trace)
+            .filter(Some("reqwest"), LevelFilter::Warn)
             .filter(Some("serenity"), LevelFilter::Warn)
             .filter(Some("poise"), LevelFilter::Warn)
             .target(env_logger::Target::Stdout)

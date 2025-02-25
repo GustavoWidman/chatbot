@@ -14,7 +14,7 @@ impl ChatBot {
     pub async fn new(config: ChatBotConfig) -> Result<Self> {
         let builder = serenity::Client::builder(&config.discord.token, GatewayIntents::all());
 
-        let (framework, data) = handler::commands::framework(config).await;
+        let (framework, data) = handler::framework::framework(config).await;
 
         let client = builder
             .event_handler(Handler::new(data))

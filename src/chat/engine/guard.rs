@@ -14,7 +14,7 @@ pub struct EngineGuard<'a> {
 }
 
 impl<'a> EngineGuard<'a> {
-    pub async fn lock(data: &'a Data, user: User) -> Self {
+    pub async fn lock(data: &'a Data, user: User) -> anyhow::Result<Self> {
         let user_map = data.user_map.read().await;
         let contains = user_map.contains_key(&user);
         drop(user_map);
@@ -24,17 +24,17 @@ impl<'a> EngineGuard<'a> {
                 let mut user_map = data.user_map.write().await;
                 data.config.write().await.update();
                 let config = data.config.read().await.clone();
-                let engine = ChatEngine::new(config, user.id).await;
+                let engine = ChatEngine::new(config, user.id).await?;
 
                 user_map.insert(user.clone(), RwLock::new(engine));
             }
         };
 
         let user_map = data.user_map.read().await;
-        Self {
+        Ok(Self {
             _guard: user_map,
             user,
-        }
+        })
     }
 
     pub async fn engine(&self) -> &RwLock<ChatEngine> {

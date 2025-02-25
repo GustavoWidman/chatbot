@@ -1,49 +1,60 @@
+use anyhow::anyhow;
 use rig::message::Message as RigMessage;
 use serenity::all::{Context, Message, MessageUpdateEvent};
 
 use crate::chat::{ChatMessage, engine::EngineGuard};
 
-use super::super::Handler;
+use super::{super::Handler, error::HandlerResult};
 
 // todo add proper error handling instead of silently returning
 impl Handler {
     pub async fn on_edit(
         &self,
-        _: Context,
+        ctx: Context,
         _: Option<Message>,
         _: Option<Message>,
         event: MessageUpdateEvent,
-    ) {
-        // get  author or early return (no err)
+    ) -> HandlerResult<()> {
+        // get author or early return (no err)
         let author = if let Some(author) = event.author {
             author
         } else {
-            return;
+            return HandlerResult::ok(());
         };
 
         if author.bot {
-            return;
+            return HandlerResult::ok(());
         }
 
         let new_content = if let Some(new) = event.content {
             new
         } else {
-            return;
+            return HandlerResult::ok(());
         };
 
         let data = self.data.clone();
-        let guard = EngineGuard::lock(&data, author).await;
+        let guard = match EngineGuard::lock(&data, author).await {
+            Ok(guard) => guard,
+            Err(why) => {
+                return HandlerResult::err(why, (ctx.http, event.channel_id));
+            }
+        };
+
         let mut engine = guard.engine().await.write().await;
 
         // user message
-        let messages = if let Some(messages) = engine.find_mut(event.id) {
-            messages
-        } else {
-            log::warn!(
-                "No conversation thread found for edited message id: {:?}, is this our fault?",
-                event.id
-            );
-            return;
+        let messages = match engine.find_mut(event.id) {
+            Some(messages) => messages,
+            None => {
+                log::warn!(
+                    "No conversation thread found for edited message id: {:?}, is this our fault?",
+                    event.id
+                );
+                return HandlerResult::err(
+                    anyhow!("message not found in engine"),
+                    (ctx.http, event.channel_id),
+                );
+            }
         };
 
         // push the new message and select it
@@ -51,5 +62,7 @@ impl Handler {
             inner: RigMessage::user(new_content),
             ..Default::default()
         });
+
+        HandlerResult::ok(())
     }
 }
