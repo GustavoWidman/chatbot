@@ -41,6 +41,13 @@ impl Handler {
                         .label("")
                         .emoji('♻')
                         .style(serenity::all::ButtonStyle::Secondary),
+                )
+                .button(
+                    CreateButton::new("edit")
+                        .label("")
+                        .emoji('✏')
+                        .style(serenity::all::ButtonStyle::Secondary)
+                        .disabled(false),
                 );
 
             let msg = msg

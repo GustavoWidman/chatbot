@@ -1,23 +1,18 @@
 use serenity::all::{
-    ActionRowComponent, ButtonKind, ComponentInteraction, Context, CreateActionRow, CreateButton,
-    EditMessage,
+    ActionRowComponent, ButtonKind, Context, CreateActionRow, CreateButton, EditMessage, Message,
 };
 
 use super::Handler;
 
+mod edit;
 mod next;
 mod prev;
 mod regen;
 
 impl Handler {
-    pub async fn disable_buttons(
-        &self,
-        component: &mut ComponentInteraction,
-        ctx: &Context,
-    ) -> anyhow::Result<()> {
+    pub async fn disable_buttons(&self, mut message: Message, ctx: &Context) -> anyhow::Result<()> {
         let buttons = CreateActionRow::Buttons(
-            component
-                .message
+            message
                 .components
                 .iter()
                 .flat_map(|c| &c.components)
@@ -49,8 +44,7 @@ impl Handler {
                 .collect::<Vec<_>>(),
         );
 
-        component
-            .message
+        message
             .edit(
                 ctx.http.clone(),
                 EditMessage::new().components(vec![buttons]),

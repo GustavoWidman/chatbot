@@ -119,6 +119,13 @@ impl Handler {
                         .emoji('♻')
                         .style(serenity::all::ButtonStyle::Secondary)
                         .disabled(false),
+                )
+                .button(
+                    CreateButton::new("edit")
+                        .label("")
+                        .emoji('✏')
+                        .style(serenity::all::ButtonStyle::Secondary)
+                        .disabled(false),
                 );
 
             let msg = channel.send_message(http.clone(), message.clone()).await?;

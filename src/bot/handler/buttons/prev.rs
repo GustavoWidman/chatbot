@@ -48,6 +48,13 @@ impl Handler {
                             .emoji('⏩')
                             .style(serenity::all::ButtonStyle::Secondary)
                             .disabled(false),
+                    )
+                    .button(
+                        CreateButton::new("edit")
+                            .label("")
+                            .emoji('✏')
+                            .style(serenity::all::ButtonStyle::Secondary)
+                            .disabled(false),
                     ),
             )
             .await?;

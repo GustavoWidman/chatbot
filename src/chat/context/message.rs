@@ -26,6 +26,22 @@ impl Display for MessageRole {
 }
 
 impl ChatMessage {
+    pub fn assistant(content: String) -> Self {
+        Self {
+            inner: RigMessage::assistant(content),
+            sent_at: Utc::now(),
+            freewill: false,
+        }
+    }
+
+    pub fn user(content: String) -> Self {
+        Self {
+            inner: RigMessage::user(content),
+            sent_at: Utc::now(),
+            freewill: false,
+        }
+    }
+
     pub fn content(&self) -> Option<String> {
         match &self.inner {
             RigMessage::Assistant { content } => {
