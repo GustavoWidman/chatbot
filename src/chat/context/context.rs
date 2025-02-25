@@ -109,6 +109,21 @@ impl ChatContext {
         }
     }
 
+    async fn get_messages(&self) -> Vec<ChatMessage> {
+        self.messages
+            .iter()
+            .map(|(_, messages)| messages.selected().clone())
+            .collect::<Vec<_>>()
+    }
+
+    pub async fn take_until_freewill(&self) -> Vec<ChatMessage> {
+        self.messages
+            .iter()
+            .take_while(|(_, messages)| !messages.selected().freewill)
+            .map(|(_, messages)| messages.selected().clone())
+            .collect::<Vec<_>>()
+    }
+
     pub async fn get_context(&mut self) -> Result<ContextWindow> {
         if self.messages.is_empty() {
             let system_prompt = self
@@ -125,11 +140,7 @@ impl ChatContext {
         }
 
         // Add the messages
-        let ctx = self
-            .messages
-            .iter()
-            .map(|(_, messages)| messages.selected().clone())
-            .collect::<Vec<_>>();
+        let ctx = self.get_messages().await;
 
         let drained = self.drain_overflow().await;
 

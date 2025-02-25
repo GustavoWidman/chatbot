@@ -6,7 +6,6 @@ use crate::chat::{ChatMessage, engine::EngineGuard};
 
 use super::{super::Handler, error::HandlerResult};
 
-// todo add proper error handling instead of silently returning
 impl Handler {
     pub async fn on_edit(
         &self,
@@ -15,7 +14,6 @@ impl Handler {
         _: Option<Message>,
         event: MessageUpdateEvent,
     ) -> HandlerResult<()> {
-        // get author or early return (no err)
         let author = if let Some(author) = event.author {
             author
         } else {

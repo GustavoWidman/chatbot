@@ -126,7 +126,11 @@ impl MemoryStorage {
         &self,
         embedding: Vec<impl Into<f32>>,
         user_id: UserId,
+        limit: u64,
+        threshold: Option<f32>,
     ) -> anyhow::Result<Vec<String>> {
+        let threshold = threshold.unwrap_or(self.settings.similarity_threshold);
+
         let embedding = embedding
             .into_iter()
             .map(|x| x.into())
@@ -137,7 +141,7 @@ impl MemoryStorage {
         let search_result = self
             .client
             .search_points(
-                SearchPointsBuilder::new(collection_name, embedding, 1) // todo set recall limit
+                SearchPointsBuilder::new(collection_name, embedding, limit)
                     // .filter(Filter::all([Condition::matches("bar", 12)]))
                     .with_payload(true), // .params(SearchParamsBuilder::default().exact(true)),
             )
@@ -146,13 +150,15 @@ impl MemoryStorage {
         Ok(search_result
             .result
             .into_iter()
-            .filter_map(|point| {
-                log::info!(
-                    "payload:\n{}\nscore: {:?}",
-                    serde_json::to_string_pretty(&point.payload).ok()?,
-                    point.score
-                );
-                if point.score > self.settings.similarity_threshold {
+            .enumerate()
+            .filter_map(|(i, point)| {
+                if point.score > threshold {
+                    log::info!(
+                        "payload #{i}:\n{}\nscore: {}",
+                        serde_json::to_string_pretty(&point.payload).ok()?,
+                        point.score
+                    );
+
                     let payload = point.payload;
                     let memory = payload.get("memory")?.as_str()?;
 

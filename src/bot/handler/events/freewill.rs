@@ -6,7 +6,7 @@ use tokio::{task::JoinHandle, time};
 
 use crate::{
     bot::handler::framework::InnerData,
-    chat::engine::{ContextType, EngineGuard},
+    chat::engine::{ChatEngine, ContextType, EngineGuard},
 };
 
 use super::super::Handler;
@@ -81,8 +81,8 @@ impl Handler {
         channel: ChannelId,
         http: Arc<Http>,
     ) -> bool {
-        log::debug!("freewilling");
-        let guard = if let Ok(engine) = EngineGuard::lock(&data, user).await {
+        log::debug!("attempting to freewill");
+        let guard = if let Ok(engine) = EngineGuard::lock(&data, user.clone()).await {
             engine
         } else {
             return false;
@@ -91,11 +91,14 @@ impl Handler {
         let mut engine = guard.engine().await.write().await;
 
         let out: anyhow::Result<Message> = async {
-            let response = engine
+            Self::freewill_memory_store(&engine).await?;
+
+            let mut response = engine
                 .user_prompt(None, Some(ContextType::Freewill))
                 .await?;
+            response.freewill = true;
 
-            log::info!("{:?}", response);
+            log::info!("freewill response:\n{:?}", response);
 
             let message = CreateMessage::new()
                 .content(
@@ -164,6 +167,20 @@ impl Handler {
         let bool = rng.random_bool(threshold);
 
         bool
+    }
+
+    // todo: post freewill, index context as a memory to simulate human-like behavior
+    pub async fn freewill_memory_store(engine: &ChatEngine) -> anyhow::Result<()> {
+        log::info!("performing freewill memory store");
+
+        let user_name = engine.system_prompt.user_name.clone();
+        let assistant_name = engine.system_prompt.chatbot_name.clone();
+
+        let messages = engine.take_until_freewill().await;
+
+        engine
+            .summarize_and_store(messages, user_name, assistant_name)
+            .await
     }
 }
 

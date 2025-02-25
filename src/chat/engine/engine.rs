@@ -139,6 +139,15 @@ impl ChatEngine {
 
         Err(anyhow::anyhow!("too many retries"))
     }
+
+    pub async fn summarize_and_store(
+        &self,
+        context: Vec<ChatMessage>,
+        user_name: String,
+        assistant_name: String,
+    ) -> anyhow::Result<()> {
+        self.client.store(context, user_name, assistant_name).await
+    }
 }
 
 impl Deref for ChatEngine {

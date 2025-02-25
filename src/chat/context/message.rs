@@ -8,6 +8,7 @@ use rig::message::{AssistantContent, Message as RigMessage, UserContent};
 pub struct ChatMessage {
     pub inner: RigMessage,
     pub sent_at: DateTime<Utc>,
+    pub freewill: bool,
 }
 
 pub enum MessageRole {
@@ -61,6 +62,7 @@ impl Default for ChatMessage {
         Self {
             inner: RigMessage::user(""),
             sent_at: Utc::now(),
+            freewill: false,
         }
     }
 }
@@ -89,6 +91,7 @@ impl From<RigMessage> for ChatMessage {
         Self {
             inner: message,
             sent_at: Utc::now(),
+            freewill: false,
         }
     }
 }

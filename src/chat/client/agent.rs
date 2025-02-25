@@ -94,13 +94,41 @@ impl CompletionAgent {
         mut system_prompt: String,
         context: Vec<ChatMessage>,
     ) -> anyhow::Result<CompletionResult> {
-        let use_tools = self.config.use_tools.unwrap_or(true);
+        //? traditional RAG
+        let recalled = self.rag_recall(&prompt).await?;
+        // let recalled: Vec<String> = vec![]; // todo testing
+        if !recalled.is_empty() {
+            log::info!("RAGged {} memories", recalled.len());
+            system_prompt.push_str("
+## Spontaneously recalled memories
 
+The following memories were recalled automatically from the long term memory storage based on the user's input:
+
+");
+            let formatted = recalled
+                .into_iter()
+                .enumerate()
+                .map(|(i, mem)| {
+                    log::info!("recalled: {mem:?}");
+                    format!(
+                        "### Spontaneous Memory {}\n```memory\n{}\n```\n",
+                        i + 1,
+                        mem
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            system_prompt.push_str(&formatted);
+        }
+
+        //? rag by tool (incentive)
+        let use_tools = self.config.use_tools.unwrap_or(true);
         let tools = if use_tools {
             system_prompt.push_str("
 ## Tool Usage
 - Actively try to utilize the memory_store tool to store important information that you'd like to recall later in the long term memory storage, preferably in bullet points. Do not mention the usage of this tool to the user, just use it when needed.
-- Actively try to utilize the memory_recall tool to recall information from previous messages and conversations you are not currently aware of. Do not mention this usage of the tool to the user, just use it when needed.
+- Actively try to utilize the memory_recall tool to recall information from previous messages and conversations you are not currently aware of. Do not mention this usage of the tool to the user, just use it when needed. If you believe a memory has already been recalled in the \"Spontaneously recalled memories\" section, choose not to recall it again.
 
 ");
             self.tool_definitions().await
@@ -115,8 +143,8 @@ impl CompletionAgent {
             chat_history: context.into_iter().map(|x| x.into()).collect(),
             documents: vec![],
             max_tokens: self.config.max_tokens,
-            // preamble: Some(system_prompt),
-            preamble: None, // todo testing
+            preamble: Some(system_prompt),
+            // preamble: None, // todo testing
             temperature: self.config.temperature,
             tools,
             prompt: prompt.into(),
@@ -176,6 +204,27 @@ impl CompletionAgent {
         }
     }
 
+    async fn rag_recall(&self, prompt: &ChatMessage) -> anyhow::Result<Vec<String>> {
+        let message = prompt
+            .content()
+            .ok_or(anyhow::anyhow!("message does not have a content"))?;
+
+        let vec = self
+            .embedding_model
+            .embed_text(&message)
+            .await?
+            .vec
+            .into_iter()
+            .map(|x| x as f32)
+            .collect::<Vec<f32>>();
+
+        // todo change limit here
+        Ok(self
+            .memory_storage
+            .search(vec, self.user_id, 5, None)
+            .await?)
+    }
+
     pub async fn store(
         &self,
         context: Vec<ChatMessage>,
@@ -189,7 +238,6 @@ impl CompletionAgent {
         log::info!("summary: {}", summary);
 
         let Embedding { document, vec } = self.embedding_model.embed_text(&summary).await?;
-
         let vec = vec.into_iter().map(|x| x as f32).collect::<Vec<f32>>();
 
         self.memory_storage.store(document, vec, self.user_id).await
