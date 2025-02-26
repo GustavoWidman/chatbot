@@ -64,7 +64,9 @@ impl Handler {
     async fn on_modal_submit(&self, ctx: Context, interaction: Interaction) -> HandlerResult<()> {
         if let Some(modal) = interaction.into_modal_submit() {
             let result = match modal.data.custom_id.as_str() {
-                "edit" => self.edit_modal(modal.clone(), ctx.clone()).await,
+                custom_id if custom_id.starts_with("edit_") => {
+                    self.edit_modal(modal.clone(), ctx.clone()).await
+                }
                 _ => {
                     log::warn!("unknown custom_id \"{:?}\", ignoring", modal.data.custom_id);
                     Ok(())

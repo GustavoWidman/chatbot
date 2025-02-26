@@ -1,16 +1,19 @@
+use std::{fs::File, path::PathBuf};
+
 use anyhow::{Result, anyhow};
 use branch_context::{Message, Messages};
 use indexmap::IndexMap;
 use rig::message::{Message as RigMessage, UserContent};
-use serenity::all::MessageId;
+use serenity::all::{MessageId, UserId};
 
-use crate::{chat::prompt::SystemPromptBuilder, utils};
+use crate::{config::structure::ContextConfig, utils};
 
 use super::message::ChatMessage;
 
 pub struct ChatContext {
     messages: IndexMap<u64, Messages<ChatMessage>>,
-    pub system_prompt: SystemPromptBuilder,
+    save_path: Option<PathBuf>,
+    pub config: ContextConfig,
 }
 
 pub struct ContextWindow {
@@ -21,11 +24,83 @@ pub struct ContextWindow {
 }
 
 impl ChatContext {
-    pub fn new(system_prompt: &SystemPromptBuilder) -> Self {
-        Self {
+    pub fn new(config: &ContextConfig, user_id: UserId) -> Self {
+        let save_path = &config
+            .save_to_disk_folder
+            .as_ref()
+            .map(|path| {
+                if path.is_file() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| {
+                            log::error!("Failed to remove file: {e}");
+                            e
+                        })
+                        .ok()?;
+                }
+
+                std::fs::create_dir_all(&path)
+                    .map_err(|e| {
+                        log::error!("Failed to create dir: {e}");
+                        e
+                    })
+                    .ok()?;
+
+                Some(path.join(format!("context-{}.json", user_id)))
+            })
+            .flatten();
+
+        let result = match save_path {
+            Some(path) => File::open(path)
+                .ok()
+                .and_then(|mut file| {
+                    serde_json::from_reader(&mut file)
+                        .map_err(|e| {
+                            log::error!("Failed to deserialize context: {e}");
+                            e
+                        })
+                        .ok()
+                })
+                .map(|messages: IndexMap<u64, Messages<ChatMessage>>| {
+                    log::info!(
+                        "Recovered context with {} messages for user {}",
+                        messages.len(),
+                        user_id
+                    );
+
+                    Self {
+                        messages,
+                        save_path: save_path.clone(),
+                        config: config.clone(),
+                    }
+                }),
+            None => None,
+        };
+
+        result.unwrap_or(Self {
             messages: IndexMap::new(),
-            system_prompt: system_prompt.clone(),
+            save_path: save_path.clone(),
+            config: config.clone(),
+        })
+    }
+
+    pub async fn shutdown(&self) -> anyhow::Result<()> {
+        if let Some(path) = &self.save_path {
+            log::info!(
+                "Saving context with {} messages to {}",
+                self.messages.len(),
+                path.display()
+            );
+
+            let file = File::options().write(true).create(true).open(path)?;
+            file.set_len(0)?;
+            serde_json::to_writer(file, &self.messages)?;
         }
+
+        Ok(())
+    }
+
+    pub fn clear(&mut self) {
+        self.messages.clear();
     }
 
     pub fn add_message(
@@ -95,8 +170,8 @@ impl ChatContext {
 
     /// If STM is full, drain until STM is 80% of max_stm
     async fn drain_overflow(&mut self) -> Option<Vec<ChatMessage>> {
-        if self.messages.len() >= self.system_prompt.max_stm {
-            let to_remove = self.messages.len() - ((self.system_prompt.max_stm * 4) / 5);
+        if self.messages.len() >= self.config.max_stm {
+            let to_remove = self.messages.len() - ((self.config.max_stm * 4) / 5);
             log::info!("context close to or full, draining {to_remove} messages");
             Some(
                 self.messages
@@ -127,7 +202,8 @@ impl ChatContext {
     pub async fn get_context(&mut self) -> Result<ContextWindow> {
         if self.messages.is_empty() {
             let system_prompt = self
-                .system_prompt
+                .config
+                .system
                 .clone()
                 .build(chrono::Duration::seconds(0));
 
@@ -144,7 +220,7 @@ impl ChatContext {
 
         let drained = self.drain_overflow().await;
 
-        let system_prompt = self.system_prompt.clone().build(
+        let system_prompt = self.config.system.clone().build(
             // unwrapping is safe because we know the context is not empty
             self.time_since_last().unwrap(),
         );
@@ -187,7 +263,7 @@ impl ChatContext {
             .map(|idx| ctx.remove(idx))
             .ok_or_else(|| anyhow::anyhow!("No user text messages found for prompting"))?;
 
-        let system_prompt = self.system_prompt.clone().build(
+        let system_prompt = self.config.system.clone().build(
             // unwrapping is safe because we know the context is not empty
             self.time_since_last().unwrap(),
         );
@@ -241,6 +317,6 @@ impl ChatContext {
 
     #[allow(unused)]
     pub fn add_long_term_memories(&mut self, memories: Vec<String>) {
-        self.system_prompt.add_long_term_memories(memories);
+        self.config.system.add_long_term_memories(memories);
     }
 }

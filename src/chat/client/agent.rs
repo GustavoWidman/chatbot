@@ -153,7 +153,11 @@ The following memories were recalled automatically from the long term memory sto
         let response = self.completion_model.completion(request).await?;
 
         match response.first() {
-            rig::message::AssistantContent::Text(text) => {
+            rig::message::AssistantContent::Text(mut text) => {
+                if self.config.force_lowercase.unwrap_or(false) {
+                    text.text = text.text.to_lowercase();
+                }
+
                 Ok(CompletionResult::Message(Message::Assistant {
                     content: OneOrMany::one(AssistantContent::text(&text.text)),
                 }))

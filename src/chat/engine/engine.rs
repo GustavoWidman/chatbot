@@ -21,7 +21,7 @@ pub struct ChatEngine {
 
 impl ChatEngine {
     pub async fn new(config: ChatBotConfig, user_id: UserId) -> anyhow::Result<Self> {
-        let context = ChatContext::new(&config.prompt);
+        let context = ChatContext::new(&config.context, user_id);
         let client = CompletionAgent::new(config.llm.clone(), user_id).await?;
 
         Ok(Self { client, context })
@@ -36,7 +36,7 @@ impl ChatEngine {
     ) -> anyhow::Result<Self> {
         // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
         let client = client.unwrap_or(CompletionAgent::new(config.llm.clone(), user_id).await?);
-        let context = context.unwrap_or(ChatContext::new(&config.prompt));
+        let context = context.unwrap_or(ChatContext::new(&config.context, user_id));
 
         Ok(Self { client, context })
     }
@@ -68,8 +68,8 @@ impl ChatEngine {
                 self.client
                     .store(
                         drained,
-                        self.context.system_prompt.user_name.clone(),
-                        self.context.system_prompt.chatbot_name.clone(),
+                        self.context.config.system.user_name.clone(),
+                        self.context.config.system.chatbot_name.clone(),
                     )
                     .await?;
             }
@@ -147,6 +147,14 @@ impl ChatEngine {
         assistant_name: String,
     ) -> anyhow::Result<()> {
         self.client.store(context, user_name, assistant_name).await
+    }
+
+    pub async fn shutdown(&self) -> anyhow::Result<()> {
+        self.context.shutdown().await
+    }
+
+    pub fn clear_context(&mut self) {
+        self.context.clear()
     }
 }
 

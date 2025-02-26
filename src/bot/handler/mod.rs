@@ -1,9 +1,15 @@
+use std::{
+    process::exit,
+    sync::{Arc, mpsc},
+};
+
 use events::HandlerResult;
 pub use framework::Data;
 use serenity::{
     all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
     async_trait,
 };
+use tokio::{signal, task::JoinHandle};
 
 mod buttons;
 mod events;
@@ -13,9 +19,64 @@ pub struct Handler {
     pub data: Data,
 }
 impl Handler {
-    pub fn new(data: Data) -> Self {
-        Self { data }
+    pub fn new(data: Data) -> (Arc<Self>, JoinHandle<()>) {
+        let handler = Arc::new(Self { data });
+
+        let handle = tokio::spawn({
+            let handler = handler.clone();
+            let shutdown_rx = setup_ctrlc_handler();
+            async move {
+                // signal::ctrl_c()
+                //     .await
+                //     .expect("failed to install CTRL+C signal handler");
+                shutdown_rx
+                    .recv()
+                    .expect("Failed to receive shutdown signal");
+
+                if let Err(err) = handler.shutdown().await {
+                    log::error!("Error shutting down: {err}");
+                }
+
+                exit(0);
+            }
+        });
+
+        (handler, handle)
     }
+}
+
+fn setup_ctrlc_handler() -> mpsc::Receiver<()> {
+    let (sender, receiver) = mpsc::channel();
+
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        tokio::spawn({
+            let mut term_signal = signal(SignalKind::terminate()).unwrap();
+            let mut int_signal = signal(SignalKind::interrupt()).unwrap();
+            let mut hup_signal = signal(SignalKind::hangup()).unwrap();
+
+            async move {
+                tokio::select! {
+                    _ = term_signal.recv() => {
+                        log::info!("SIGTERM received, shutting down...");
+                        let _ = sender.send(());
+                    },
+                    _ = int_signal.recv() => {
+                        log::info!("SIGINT received, shutting down...");
+                        let _ = sender.send(());
+                    },
+                    _ = hup_signal.recv() => {
+                        log::info!("SIGHUP received, shutting down...");
+                        let _ = sender.send(());
+                    },
+                };
+            }
+        });
+    }
+
+    receiver
 }
 
 #[async_trait]
@@ -24,6 +85,8 @@ impl EventHandler for Handler {
         log::info!("{} is connected!", ready.user.name);
 
         ctx.set_presence(None, serenity::all::OnlineStatus::Online);
+
+        self.data.context.write().await.replace(Arc::new(ctx));
     }
 
     // async fn typing_start(&self, ctx: Context, event: TypingStartEvent) {
@@ -68,5 +131,26 @@ impl EventHandler for Handler {
         if let HandlerResult::Err(error) = self.on_edit(ctx, old_if_available, new, event).await {
             Self::on_error(error).await;
         }
+    }
+}
+
+impl Handler {
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        println!("");
+        log::info!("Ctrl-C received, waiting for locks and shutting down...");
+        let user_map = self.data.user_map.write().await;
+        let mut context = self.data.context.write().await;
+
+        for (_, engine) in user_map.iter() {
+            engine.write().await.shutdown().await?;
+        }
+
+        if let Some(context) = context.take() {
+            context.set_presence(None, serenity::all::OnlineStatus::Offline);
+
+            context.shard.shutdown_clean();
+        }
+
+        Ok(())
     }
 }

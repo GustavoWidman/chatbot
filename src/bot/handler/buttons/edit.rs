@@ -16,9 +16,9 @@ impl Handler {
     ) -> anyhow::Result<()> {
         let old_content = component.message.content.clone();
 
-        let modal =
-            CreateModal::new("edit", "Modal Title").components(vec![CreateActionRow::InputText(
-                CreateInputText::new(InputTextStyle::Paragraph, "Edit Response", "response")
+        let modal = CreateModal::new(format!("edit_{}", component.message.id), "Edit Response")
+            .components(vec![CreateActionRow::InputText(
+                CreateInputText::new(InputTextStyle::Paragraph, "Response", "response")
                     .placeholder("Edit this response here")
                     .value(old_content)
                     .max_length(2000)

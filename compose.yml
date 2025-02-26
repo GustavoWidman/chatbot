@@ -20,3 +20,6 @@ services:
             - type: bind
               source: ./config.toml
               target: /config.toml
+            - type: bind
+              source: ./saves
+              target: /saves

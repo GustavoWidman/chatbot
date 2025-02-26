@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::chat::{client::Provider, prompt::SystemPromptBuilder};
@@ -12,7 +14,14 @@ pub struct ChatBotConfigInner {
     pub discord: DiscordConfig,
     pub llm: LLMConfig,
     pub freewill: FreewillConfig,
-    pub prompt: SystemPromptBuilder,
+    pub context: ContextConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct ContextConfig {
+    pub max_stm: usize,
+    pub save_to_disk_folder: Option<PathBuf>,
+    pub system: SystemPromptBuilder,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]

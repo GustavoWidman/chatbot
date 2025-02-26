@@ -3,8 +3,9 @@ use std::fmt::Display;
 use branch_context::{Message, Messages};
 use chrono::{DateTime, Utc};
 use rig::message::{AssistantContent, Message as RigMessage, UserContent};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatMessage {
     pub inner: RigMessage,
     pub sent_at: DateTime<Utc>,

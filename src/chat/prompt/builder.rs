@@ -12,7 +12,6 @@ pub struct SystemPromptBuilder {
     pub user_name: String,
     pub about: String,
     pub max_ltm: usize,
-    pub max_stm: usize,
     pub tone: Option<String>,
     pub age: Option<String>,
     pub likes: Option<Vec<String>>,

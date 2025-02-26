@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use poise::CreateReply;
-use serenity::all::{ChannelId, CreateMessage, Http, Message};
+use serenity::all::{ChannelId, CreateEmbed, CreateMessage, Http, Message, MessageReference};
 
 use crate::bot::handler::framework::Context;
 
@@ -13,31 +13,42 @@ impl Handler {
     pub async fn on_error(error: HandlerError<'_>) {
         let HandlerError { error, location } = error;
 
-        log::error!("handling error:\n{error:?}");
+        log::error!("handling error:\n\n{error:?}");
+
+        let embed = CreateEmbed::default()
+            .color(0xFF6961)
+            .title("Chatbot encountered an error")
+            .description(format!("```{}```", error.to_string()));
 
         match location {
             ErrorLocation::Context(ctx) => {
                 if let Err(why) = ctx
-                    .send(
-                        CreateReply::default()
-                            .content(error.to_string())
-                            .ephemeral(true),
-                    )
+                    .send(CreateReply::default().embed(embed).ephemeral(true))
                     .await
                 {
                     log::error!("error during propagation of error to user: {why:?}");
                 }
             }
             ErrorLocation::Message((http, message)) => {
-                if let Err(why) = message.reply(http, error.to_string()).await {
+                if let Err(why) = message
+                    .channel_id
+                    .send_message(
+                        http,
+                        CreateMessage::new()
+                            .reference_message(&message)
+                            .embed(embed),
+                    )
+                    .await
+                {
                     log::error!("error during propagation of error to user: {why:?}");
                 }
             }
-            ErrorLocation::Channel((http, channel_id)) => {
-                if let Err(why) = channel_id
-                    .send_message(http, CreateMessage::new().content(error.to_string()))
-                    .await
-                {
+            ErrorLocation::Channel((http, channel_id, reference)) => {
+                let mut message = CreateMessage::new().embed(embed);
+                if let Some(ref_msg) = reference {
+                    message = message.reference_message(ref_msg);
+                }
+                if let Err(why) = channel_id.send_message(http, message).await {
                     log::error!("error during propagation of error to user: {why:?}");
                 }
             }
@@ -50,7 +61,7 @@ impl Handler {
 pub enum ErrorLocation<'a> {
     Context(Context<'a>),
     Message((Arc<Http>, Message)),
-    Channel((Arc<Http>, ChannelId)),
+    Channel((Arc<Http>, ChannelId, Option<MessageReference>)),
 }
 
 impl<'a> Into<ErrorLocation<'a>> for Context<'a> {
@@ -66,6 +77,20 @@ impl Into<ErrorLocation<'static>> for (Arc<Http>, Message) {
 }
 
 impl Into<ErrorLocation<'static>> for (Arc<Http>, ChannelId) {
+    fn into(self) -> ErrorLocation<'static> {
+        let (http, channel_id) = self;
+        ErrorLocation::Channel((http, channel_id, None))
+    }
+}
+
+impl Into<ErrorLocation<'static>> for (Arc<Http>, ChannelId, MessageReference) {
+    fn into(self) -> ErrorLocation<'static> {
+        let (http, channel_id, reference) = self;
+        ErrorLocation::Channel((http, channel_id, Some(reference)))
+    }
+}
+
+impl Into<ErrorLocation<'static>> for (Arc<Http>, ChannelId, Option<MessageReference>) {
     fn into(self) -> ErrorLocation<'static> {
         ErrorLocation::Channel(self)
     }

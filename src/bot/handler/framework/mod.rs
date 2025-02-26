@@ -17,6 +17,7 @@ pub struct InnerData {
     pub config: RwLock<ChatBotConfig>,
     pub user_map: RwLock<HashMap<User, RwLock<ChatEngine>>>,
     pub freewill_map: RwLock<HashMap<User, JoinHandle<()>>>,
+    pub context: RwLock<Option<Arc<serenity::client::Context>>>,
 }
 pub type Data = Arc<InnerData>;
 
@@ -25,6 +26,7 @@ pub async fn framework(config: ChatBotConfig) -> (impl Framework + 'static, Data
         config: RwLock::new(config),
         user_map: RwLock::new(HashMap::new()),
         freewill_map: RwLock::new(HashMap::new()),
+        context: RwLock::new(None),
     });
     let clone = data.clone();
 

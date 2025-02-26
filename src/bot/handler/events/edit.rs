@@ -34,7 +34,14 @@ impl Handler {
         let guard = match EngineGuard::lock(&data, author).await {
             Ok(guard) => guard,
             Err(why) => {
-                return HandlerResult::err(why, (ctx.http, event.channel_id));
+                return HandlerResult::err(
+                    why,
+                    (
+                        ctx.http,
+                        event.channel_id,
+                        event.message_reference.flatten(),
+                    ),
+                );
             }
         };
 
@@ -50,7 +57,11 @@ impl Handler {
                 );
                 return HandlerResult::err(
                     anyhow!("message not found in engine"),
-                    (ctx.http, event.channel_id),
+                    (
+                        ctx.http,
+                        event.channel_id,
+                        event.message_reference.flatten(),
+                    ),
                 );
             }
         };

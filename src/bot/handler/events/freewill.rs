@@ -180,8 +180,8 @@ impl Handler {
     pub async fn freewill_memory_store(engine: &ChatEngine) -> anyhow::Result<()> {
         log::info!("performing freewill memory store");
 
-        let user_name = engine.system_prompt.user_name.clone();
-        let assistant_name = engine.system_prompt.chatbot_name.clone();
+        let user_name = engine.config.system.user_name.clone();
+        let assistant_name = engine.config.system.chatbot_name.clone();
 
         let messages = engine.take_until_freewill().await;
 
