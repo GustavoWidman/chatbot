@@ -9,7 +9,8 @@ use serenity::{
     all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
     async_trait,
 };
-use tokio::{signal, task::JoinHandle};
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::task::JoinHandle;
 
 mod buttons;
 mod events;
@@ -48,33 +49,28 @@ impl Handler {
 fn setup_ctrlc_handler() -> mpsc::Receiver<()> {
     let (sender, receiver) = mpsc::channel();
 
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
+    tokio::spawn({
+        let mut term_signal = signal(SignalKind::terminate()).unwrap();
+        let mut int_signal = signal(SignalKind::interrupt()).unwrap();
+        let mut hup_signal = signal(SignalKind::hangup()).unwrap();
 
-        tokio::spawn({
-            let mut term_signal = signal(SignalKind::terminate()).unwrap();
-            let mut int_signal = signal(SignalKind::interrupt()).unwrap();
-            let mut hup_signal = signal(SignalKind::hangup()).unwrap();
-
-            async move {
-                tokio::select! {
-                    _ = term_signal.recv() => {
-                        log::info!("SIGTERM received, shutting down...");
-                        let _ = sender.send(());
-                    },
-                    _ = int_signal.recv() => {
-                        log::info!("SIGINT received, shutting down...");
-                        let _ = sender.send(());
-                    },
-                    _ = hup_signal.recv() => {
-                        log::info!("SIGHUP received, shutting down...");
-                        let _ = sender.send(());
-                    },
-                };
-            }
-        });
-    }
+        async move {
+            tokio::select! {
+                _ = term_signal.recv() => {
+                    log::info!("SIGTERM received, shutting down...");
+                    let _ = sender.send(());
+                },
+                _ = int_signal.recv() => {
+                    log::info!("SIGINT received, shutting down...");
+                    let _ = sender.send(());
+                },
+                _ = hup_signal.recv() => {
+                    log::info!("SIGHUP received, shutting down...");
+                    let _ = sender.send(());
+                },
+            };
+        }
+    });
 
     receiver
 }
