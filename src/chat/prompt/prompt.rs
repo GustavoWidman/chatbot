@@ -99,6 +99,8 @@ Your job is to respond to last message from {}. You can use other messages for c
             ));
         }
 
+        log::trace!("prompt:\n{}", prompt);
+
         Self { inner: prompt }
     }
 

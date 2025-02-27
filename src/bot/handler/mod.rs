@@ -135,14 +135,30 @@ impl Handler {
         println!("");
         log::info!("Ctrl-C received, waiting for locks and shutting down...");
         let user_map = self.data.user_map.write().await;
-        let mut context = self.data.context.write().await;
+        let context = self.data.context.write().await;
 
+        let mut messages = Vec::new();
         for (_, engine) in user_map.iter() {
-            engine.write().await.shutdown().await?;
+            for message_identifier in engine.write().await.shutdown().await? {
+                if let Some(context) = context.as_ref() {
+                    if let Some(message) = message_identifier.to_message(&context.http).await {
+                        messages.push(message);
+                    }
+                }
+            }
         }
 
-        if let Some(context) = context.take() {
+        if let Some(context) = context.as_ref() {
             context.set_presence(None, serenity::all::OnlineStatus::Offline);
+
+            for message in messages {
+                let _ = self
+                    .disable_buttons(message, &context)
+                    .await
+                    .map_err(|why| {
+                        log::error!("Error disabling buttons: {why:?}");
+                    });
+            }
 
             context.shard.shutdown_clean();
         }

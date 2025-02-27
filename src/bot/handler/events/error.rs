@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use poise::CreateReply;
-use serenity::all::{ChannelId, CreateEmbed, CreateMessage, Http, Message, MessageReference};
+use serenity::all::{
+    ChannelId, CreateActionRow, CreateButton, CreateEmbed, CreateMessage, Http, Message,
+    MessageReference,
+};
 
 use crate::bot::handler::framework::Context;
 
@@ -19,11 +22,20 @@ impl Handler {
             .color(0xFF6961)
             .title("Chatbot encountered an error")
             .description(format!("```{}```", error.to_string()));
+        let button = CreateButton::new("delete_error")
+            .label("")
+            .emoji('❌')
+            .style(serenity::all::ButtonStyle::Danger);
 
         match location {
             ErrorLocation::Context(ctx) => {
                 if let Err(why) = ctx
-                    .send(CreateReply::default().embed(embed).ephemeral(true))
+                    .send(
+                        CreateReply::default()
+                            .embed(embed)
+                            .ephemeral(true)
+                            .components(vec![CreateActionRow::Buttons(vec![button])]),
+                    )
                     .await
                 {
                     log::error!("error during propagation of error to user: {why:?}");
@@ -35,6 +47,7 @@ impl Handler {
                     .send_message(
                         http,
                         CreateMessage::new()
+                            .button(button)
                             .reference_message(&message)
                             .embed(embed),
                     )
@@ -44,7 +57,7 @@ impl Handler {
                 }
             }
             ErrorLocation::Channel((http, channel_id, reference)) => {
-                let mut message = CreateMessage::new().embed(embed);
+                let mut message = CreateMessage::new().embed(embed).button(button);
                 if let Some(ref_msg) = reference {
                     message = message.reference_message(ref_msg);
                 }
@@ -53,8 +66,6 @@ impl Handler {
                 }
             }
         }
-
-        todo!()
     }
 }
 

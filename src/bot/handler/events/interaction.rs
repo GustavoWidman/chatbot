@@ -38,6 +38,7 @@ impl Handler {
                         "regen" => self.regen(component.clone(), ctx.clone()).await,
                         "prev" => self.prev(component.clone(), ctx.clone()).await,
                         "next" => self.next(component.clone(), ctx.clone()).await,
+                        "delete_error" => self.delete_error(component.clone(), ctx.clone()).await,
                         _ => unreachable!(),
                     }
                 }

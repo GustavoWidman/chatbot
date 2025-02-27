@@ -31,7 +31,7 @@ impl Handler {
         };
 
         let data = self.data.clone();
-        let guard = match EngineGuard::lock(&data, author).await {
+        let guard = match EngineGuard::lock(&data, author, &ctx.http).await {
             Ok(guard) => guard,
             Err(why) => {
                 return HandlerResult::err(
@@ -48,7 +48,7 @@ impl Handler {
         let mut engine = guard.engine().await.write().await;
 
         // user message
-        let messages = match engine.find_mut(event.id) {
+        let messages = match engine.find_mut(&(event.id, event.channel_id).into()) {
             Some(messages) => messages,
             None => {
                 log::warn!(

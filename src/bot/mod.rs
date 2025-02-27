@@ -6,7 +6,7 @@ use tokio::task::JoinHandle;
 use crate::config::store::ChatBotConfig;
 pub use handler::Data;
 
-mod handler;
+pub mod handler;
 
 pub struct ChatBot {
     client: Client,

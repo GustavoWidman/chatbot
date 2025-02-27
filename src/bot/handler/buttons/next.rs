@@ -13,11 +13,11 @@ impl Handler {
     ) -> anyhow::Result<()> {
         let data = self.data.clone();
 
-        let guard = EngineGuard::lock(&data, component.user).await?;
+        let guard = EngineGuard::lock(&data, component.user, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
         let message = engine
-            .find_mut(component.message.id)
+            .find_mut(&(component.message.id, component.message.channel_id).into())
             .ok_or(anyhow::anyhow!("message not found in engine"))?;
 
         if !message.forward {

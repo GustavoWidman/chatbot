@@ -61,10 +61,10 @@ impl Handler {
 
         let data = self.data.clone();
 
-        let guard = EngineGuard::lock(&data, interaction.user.clone()).await?;
+        let guard = EngineGuard::lock(&data, interaction.user.clone(), &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
-        let messages = match engine.find_mut(message.id) {
+        let messages = match engine.find_mut(&(message.id, message.channel_id).into()) {
             Some(messages) => messages,
             None => {
                 log::warn!(

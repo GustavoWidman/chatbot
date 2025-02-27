@@ -15,12 +15,12 @@ impl Handler {
     ) -> anyhow::Result<()> {
         let data = self.data.clone();
 
-        let guard = EngineGuard::lock(&data, component.user).await?;
+        let guard = EngineGuard::lock(&data, component.user, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
         // uses this to find the error before other things
         let _ = engine
-            .find_mut(component.message.id)
+            .find_mut(&(component.message.id, component.message.channel_id).into())
             .ok_or(anyhow::anyhow!("message not found in engine"))?;
 
         let old_content = component.message.content.clone();
@@ -34,7 +34,12 @@ impl Handler {
 
         let out: anyhow::Result<ChatMessage> = async {
             let response = engine
-                .user_prompt(None, Some(ContextType::Regen(component.message.id)))
+                .user_prompt(
+                    None,
+                    Some(ContextType::Regen(
+                        (component.message.id, component.message.channel_id).into(),
+                    )),
+                )
                 .await?;
 
             let content = response
@@ -78,7 +83,7 @@ impl Handler {
         match out {
             Ok(out) => {
                 let message = engine
-                    .find_mut(component.message.id)
+                    .find_mut(&(component.message.id, component.message.channel_id).into())
                     .ok_or(anyhow::anyhow!("message not found in engine"))?;
 
                 message.push(out); // pushes and selects

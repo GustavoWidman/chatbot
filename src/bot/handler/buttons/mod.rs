@@ -1,9 +1,11 @@
 use serenity::all::{
-    ActionRowComponent, ButtonKind, Context, CreateActionRow, CreateButton, EditMessage, Message,
+    ActionRowComponent, ButtonKind, Context, CreateActionRow, CreateButton, EditMessage, Http,
+    Message,
 };
 
 use super::Handler;
 
+mod delete;
 mod edit;
 mod next;
 mod prev;
@@ -48,6 +50,50 @@ impl Handler {
             .edit(
                 ctx.http.clone(),
                 EditMessage::new().components(vec![buttons]),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn enable_buttons(
+        mut message: Message,
+        http: &Http,
+        forward: bool,
+        backward: bool,
+    ) -> anyhow::Result<()> {
+        let (can_go_fwd, emoji) = match forward {
+            true => ("next", '⏩'),
+            false => ("regen", '♻'),
+        };
+
+        message
+            .edit(
+                http,
+                EditMessage::new()
+                    .content(message.content.clone())
+                    .button(
+                        CreateButton::new("prev")
+                            .label("")
+                            .emoji('⏪')
+                            .style(serenity::all::ButtonStyle::Secondary)
+                            .disabled(!backward),
+                    )
+                    .button(
+                        // regen if cant go fwd, else next
+                        CreateButton::new(can_go_fwd)
+                            .label("")
+                            .emoji(emoji)
+                            .style(serenity::all::ButtonStyle::Secondary)
+                            .disabled(false),
+                    )
+                    .button(
+                        CreateButton::new("edit")
+                            .label("")
+                            .emoji('✏')
+                            .style(serenity::all::ButtonStyle::Secondary)
+                            .disabled(false),
+                    ),
             )
             .await?;
 

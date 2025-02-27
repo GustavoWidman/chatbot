@@ -4,14 +4,66 @@ use anyhow::{Result, anyhow};
 use branch_context::{Message, Messages};
 use indexmap::IndexMap;
 use rig::message::{Message as RigMessage, UserContent};
-use serenity::all::{MessageId, UserId};
+use serde::{Deserialize, Serialize};
+use serenity::all::{ChannelId, Http, Message as SerenityMessage, MessageId, UserId};
 
-use crate::{config::structure::ContextConfig, utils};
+use crate::{bot::handler::Handler, config::structure::ContextConfig, utils};
 
-use super::message::ChatMessage;
+use super::{MessageRole, message::ChatMessage};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
+pub struct MessageIdentifier {
+    pub message_id: u64,
+    pub channel_id: u64,
+    pub random: bool,
+}
+impl From<Option<(MessageId, ChannelId)>> for MessageIdentifier {
+    fn from(value: Option<(MessageId, ChannelId)>) -> Self {
+        match value {
+            Some((message_id, channel_id)) => Self {
+                message_id: message_id.get(),
+                channel_id: channel_id.get(),
+                random: false,
+            },
+            None => Self::random(),
+        }
+    }
+}
+impl From<(MessageId, ChannelId)> for MessageIdentifier {
+    fn from(value: (MessageId, ChannelId)) -> Self {
+        Self {
+            message_id: value.0.get(),
+            channel_id: value.1.get(),
+            random: false,
+        }
+    }
+}
+impl MessageIdentifier {
+    pub fn random() -> Self {
+        Self {
+            message_id: rand::random(),
+            channel_id: rand::random(),
+            random: true,
+        }
+    }
+
+    pub async fn to_message(&self, http: &Http) -> Option<SerenityMessage> {
+        if self.random {
+            log::warn!("random message {:?} requested", self);
+            return None;
+        }
+
+        http.get_message(self.channel_id.into(), self.message_id.into())
+            .await
+            .map_err(|why| {
+                log::error!("failed to get message: {why:?}");
+            })
+            .ok()
+    }
+}
 
 pub struct ChatContext {
-    messages: IndexMap<u64, Messages<ChatMessage>>,
+    messages: IndexMap<MessageIdentifier, Messages<ChatMessage>>,
     save_path: Option<PathBuf>,
     pub config: ContextConfig,
 }
@@ -24,7 +76,7 @@ pub struct ContextWindow {
 }
 
 impl ChatContext {
-    pub fn new(config: &ContextConfig, user_id: UserId) -> Self {
+    pub async fn new(config: &ContextConfig, user_id: UserId, http: &Http) -> Self {
         let save_path = &config
             .save_to_disk_folder
             .as_ref()
@@ -45,45 +97,92 @@ impl ChatContext {
                     })
                     .ok()?;
 
-                Some(path.join(format!("context-{}.json", user_id)))
+                Some(path.join(format!("context-{}.bin", user_id)))
             })
             .flatten();
 
         let result = match save_path {
-            Some(path) => File::open(path)
-                .ok()
-                .and_then(|mut file| {
-                    serde_json::from_reader(&mut file)
-                        .map_err(|e| {
-                            log::error!("Failed to deserialize context: {e}");
-                            e
-                        })
-                        .ok()
-                })
-                .map(|messages: IndexMap<u64, Messages<ChatMessage>>| {
-                    log::info!(
-                        "Recovered context with {} messages for user {}",
-                        messages.len(),
-                        user_id
-                    );
+            Some(path) => {
+                File::open(path)
+                    .ok()
+                    .and_then(|mut file| {
+                        serde_cbor::from_reader(&mut file)
+                            .map_err(|e| {
+                                log::error!("Failed to deserialize context: {e}");
+                                e
+                            })
+                            .ok()
+                    })
+                    .map(
+                        async |messages: IndexMap<MessageIdentifier, Messages<ChatMessage>>| {
+                            log::info!(
+                                "Recovered context with {} messages for user {}",
+                                messages.len(),
+                                user_id
+                            );
 
-                    Self {
-                        messages,
-                        save_path: save_path.clone(),
-                        config: config.clone(),
-                    }
-                }),
+                            if config.disable_buttons.unwrap_or(false) {
+                                // reenable buttons
+                                let discord_messages = futures::future::join_all(
+                                    messages
+                                        .iter()
+                                        .filter(|(_, message)| {
+                                            matches!(
+                                                message.selected().role(),
+                                                MessageRole::Assistant
+                                            )
+                                        })
+                                        .map(async |(id, message)| {
+                                            (id.to_message(&http).await, message)
+                                        })
+                                        .collect::<Vec<_>>(),
+                                )
+                                .await
+                                .into_iter()
+                                .filter_map(|(message, messages)| message.map(|m| (m, messages)))
+                                .collect::<Vec<_>>();
+
+                                for (message, messages) in discord_messages {
+                                    Handler::enable_buttons(
+                                        message,
+                                        http,
+                                        messages.forward,
+                                        messages.backward,
+                                    )
+                                    .await
+                                    .map_err(|why| {
+                                        log::error!("failed to enable buttons: {why:?}");
+                                        why
+                                    })?;
+                                }
+                            }
+
+                            Ok(Self {
+                                messages,
+                                save_path: save_path.clone(),
+                                config: config.clone(),
+                            })
+                        },
+                    )
+            }
             None => None,
         };
 
-        result.unwrap_or(Self {
-            messages: IndexMap::new(),
-            save_path: save_path.clone(),
-            config: config.clone(),
-        })
+        match result {
+            Some(future) => future.await.unwrap_or_else(|_: anyhow::Error| Self {
+                messages: IndexMap::new(),
+                save_path: save_path.clone(),
+                config: config.clone(),
+            }),
+            None => Self {
+                messages: IndexMap::new(),
+                save_path: save_path.clone(),
+                config: config.clone(),
+            },
+        }
     }
 
-    pub async fn shutdown(&self) -> anyhow::Result<()> {
+    pub async fn shutdown(&self) -> anyhow::Result<Vec<MessageIdentifier>> {
         if let Some(path) = &self.save_path {
             log::info!(
                 "Saving context with {} messages to {}",
@@ -93,10 +192,23 @@ impl ChatContext {
 
             let file = File::options().write(true).create(true).open(path)?;
             file.set_len(0)?;
-            serde_json::to_writer(file, &self.messages)?;
+            serde_cbor::to_writer(file, &self.messages)?;
         }
 
-        Ok(())
+        // return the message ids in the index map
+        if self.config.disable_buttons.unwrap_or(false) {
+            Ok(self
+                .messages
+                .iter()
+                .filter(|(_, message)| matches!(message.selected().role(), MessageRole::Assistant))
+                .map(|(id, _)| id)
+                .cloned()
+                .collect())
+        } else {
+            // todo: this is a cheap hack to make sure no buttons are disabled,
+            // there might be some consequences to this laziness
+            Ok(vec![])
+        }
     }
 
     pub fn clear(&mut self) {
@@ -106,19 +218,19 @@ impl ChatContext {
     pub fn add_message(
         &mut self,
         message: impl Into<Message<ChatMessage>>,
-        id: Option<impl Into<u64>>,
+        id: impl Into<MessageIdentifier>,
     ) {
-        let message = Messages::new(message.into(), id.map(|id| id.into()));
-        self.messages.insert(message.id, message);
+        let message = Messages::new(message.into());
+        self.messages.insert(id.into(), message);
     }
 
-    pub fn add_user_message(&mut self, message: String, id: MessageId) {
+    pub fn add_user_message(&mut self, message: String, id: impl Into<MessageIdentifier>) {
         self.add_message(
             ChatMessage {
                 inner: RigMessage::user(message),
                 ..Default::default()
             },
-            Some(id),
+            id,
         );
     }
 
@@ -138,7 +250,7 @@ impl ChatContext {
 
     #[allow(unused)]
     /// Returns the message with the given id (not index, if you want the index use [ChatContext::get])
-    pub fn find(&self, id: impl Into<u64>) -> Option<&Messages<ChatMessage>> {
+    pub fn find(&self, id: impl Into<MessageIdentifier>) -> Option<&Messages<ChatMessage>> {
         self.messages.get(&id.into())
     }
     #[allow(unused)]
@@ -147,8 +259,8 @@ impl ChatContext {
         self.messages.get_index(index).map(|(_, m)| m)
     }
     /// Same as [ChatContext::find] but for mutable references
-    pub fn find_mut(&mut self, id: impl Into<u64>) -> Option<&mut Messages<ChatMessage>> {
-        self.messages.get_mut(&id.into())
+    pub fn find_mut(&mut self, id: &MessageIdentifier) -> Option<&mut Messages<ChatMessage>> {
+        self.messages.get_mut(id)
     }
     #[allow(unused)]
     /// Same as [ChatContext::get] but for mutable references
@@ -156,16 +268,19 @@ impl ChatContext {
         self.messages.get_index_mut(index).map(|(_, m)| m)
     }
     /// Finds message with the given id, returning the index, the id, and the message itself.
-    pub fn find_full(&self, id: impl Into<u64>) -> Option<(usize, &u64, &Messages<ChatMessage>)> {
-        self.messages.get_full(&id.into())
+    pub fn find_full(
+        &self,
+        id: &MessageIdentifier,
+    ) -> Option<(usize, &MessageIdentifier, &Messages<ChatMessage>)> {
+        self.messages.get_full(id)
     }
     #[allow(unused)]
     /// Same as [ChatContext::find_full] but for mutable references to the message.
     pub fn find_full_mut(
         &mut self,
-        id: impl Into<u64>,
-    ) -> Option<(usize, &u64, &mut Messages<ChatMessage>)> {
-        self.messages.get_full_mut(&id.into())
+        id: &MessageIdentifier,
+    ) -> Option<(usize, &MessageIdentifier, &mut Messages<ChatMessage>)> {
+        self.messages.get_full_mut(id)
     }
 
     /// If STM is full, drain until STM is 80% of max_stm
@@ -235,7 +350,10 @@ impl ChatContext {
 
     // gets context but excludes the last message and the user prompt is taken as string-only
     // regenerating never drains, because it does not increase the STM size, so .1 is always None
-    pub async fn get_regen_context(&mut self, message_id: MessageId) -> Result<ContextWindow> {
+    pub async fn get_regen_context(
+        &mut self,
+        message_id: &MessageIdentifier,
+    ) -> Result<ContextWindow> {
         let (index, _, _) = self
             .find_full(message_id)
             .ok_or(anyhow!("message not found"))?;
@@ -297,7 +415,7 @@ impl ChatContext {
         };
 
         // id-less message
-        self.add_message(message.clone(), None::<u64>);
+        self.add_message(message.clone(), None);
 
         Ok(ContextWindow {
             user_prompt: Some(message),

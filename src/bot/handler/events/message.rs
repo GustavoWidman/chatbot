@@ -18,13 +18,13 @@ impl Handler {
         let typing = ctx.http.start_typing(msg.channel_id);
 
         let result: anyhow::Result<Message> = async {
-            let guard = EngineGuard::lock(&data, msg.author.clone()).await?;
+            let guard = EngineGuard::lock(&data, msg.author.clone(), &ctx.http).await?;
             let mut engine = guard.engine().await.write().await;
 
             let response = engine
                 .user_prompt(Some(msg.content.clone()), Some(ContextType::User))
                 .await?;
-            engine.add_user_message(msg.content.clone(), msg.id);
+            engine.add_user_message(msg.content.clone(), (msg.id, msg.channel_id));
 
             let message = CreateMessage::new()
                 // unwrap is safe because user_prompt guarantees a content
@@ -55,7 +55,7 @@ impl Handler {
                 .send_message(ctx.http.clone(), message.clone())
                 .await?;
 
-            engine.add_message(response, Some(msg.id));
+            engine.add_message(response, (msg.id, msg.channel_id));
 
             Ok(msg)
         }

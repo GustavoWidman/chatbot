@@ -2,12 +2,12 @@ use std::ops::{Deref, DerefMut};
 
 use anyhow::anyhow;
 use rig::message::Message as RigMessage;
-use serenity::all::{MessageId, UserId};
+use serenity::all::{Http, UserId};
 
 use crate::{
     chat::{
         client::{CompletionAgent, CompletionResult},
-        context::ContextWindow,
+        context::{ContextWindow, MessageIdentifier},
     },
     config::store::ChatBotConfig,
 };
@@ -20,8 +20,8 @@ pub struct ChatEngine {
 }
 
 impl ChatEngine {
-    pub async fn new(config: ChatBotConfig, user_id: UserId) -> anyhow::Result<Self> {
-        let context = ChatContext::new(&config.context, user_id);
+    pub async fn new(config: ChatBotConfig, user_id: UserId, http: &Http) -> anyhow::Result<Self> {
+        let context = ChatContext::new(&config.context, user_id, http).await;
         let client = CompletionAgent::new(config.llm.clone(), user_id).await?;
 
         Ok(Self { client, context })
@@ -31,12 +31,13 @@ impl ChatEngine {
     pub async fn new_with(
         config: ChatBotConfig,
         user_id: UserId,
+        http: &Http,
         client: Option<CompletionAgent>,
         context: Option<ChatContext>,
     ) -> anyhow::Result<Self> {
         // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
         let client = client.unwrap_or(CompletionAgent::new(config.llm.clone(), user_id).await?);
-        let context = context.unwrap_or(ChatContext::new(&config.context, user_id));
+        let context = context.unwrap_or(ChatContext::new(&config.context, user_id, http).await);
 
         Ok(Self { client, context })
     }
@@ -57,7 +58,7 @@ impl ChatEngine {
             let context: ContextWindow = match context {
                 Some(ContextType::User) => self.context.get_context().await?,
                 Some(ContextType::Freewill) => self.context.freewill_context().await?,
-                Some(ContextType::Regen(message_id)) => {
+                Some(ContextType::Regen(ref message_id)) => {
                     self.context.get_regen_context(message_id).await?
                 }
                 None => self.context.get_context().await?,
@@ -125,10 +126,8 @@ impl ChatEngine {
                     }
                 }
                 CompletionResult::Tool((call, response)) => {
-                    self.context
-                        .add_message(ChatMessage::from(call), None::<u64>);
-                    self.context
-                        .add_message(ChatMessage::from(response), None::<u64>);
+                    self.context.add_message(ChatMessage::from(call), None);
+                    self.context.add_message(ChatMessage::from(response), None);
 
                     log::info!("called functions, prompting again");
 
@@ -149,7 +148,7 @@ impl ChatEngine {
         self.client.store(context, user_name, assistant_name).await
     }
 
-    pub async fn shutdown(&self) -> anyhow::Result<()> {
+    pub async fn shutdown(&self) -> anyhow::Result<Vec<MessageIdentifier>> {
         self.context.shutdown().await
     }
 
@@ -175,5 +174,5 @@ impl DerefMut for ChatEngine {
 pub enum ContextType {
     User,
     Freewill,
-    Regen(MessageId),
+    Regen(MessageIdentifier),
 }

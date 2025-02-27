@@ -21,12 +21,13 @@ pub async fn reload(ctx: Context<'_>) -> HandlerResult<()> {
                 chat::engine::ChatEngine::new_with(
                     config,
                     ctx.author().id,
+                    ctx.http(),
                     None,
                     Some(engine.into_inner().into_context()),
                 )
                 .await
             }
-            None => chat::engine::ChatEngine::new(config, ctx.author().id).await,
+            None => chat::engine::ChatEngine::new(config, ctx.author().id, ctx.http()).await,
         }?;
         user_map.insert(ctx.author().clone(), RwLock::new(engine));
 
