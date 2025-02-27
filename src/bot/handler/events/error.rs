@@ -16,7 +16,7 @@ impl Handler {
     pub async fn on_error(error: HandlerError<'_>) {
         let HandlerError { error, location } = error;
 
-        log::error!("handling error:\n\n{error:?}");
+        log::error!("handling error:\n\n{error:?}\n");
 
         let embed = CreateEmbed::default()
             .color(0xFF6961)
@@ -24,7 +24,7 @@ impl Handler {
             .description(format!("```{}```", error.to_string()));
         let button = CreateButton::new("delete_error")
             .label("")
-            .emoji('❌')
+            .emoji('🗑')
             .style(serenity::all::ButtonStyle::Danger);
 
         match location {

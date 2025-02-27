@@ -123,6 +123,8 @@ impl ChatContext {
 
                             if config.disable_buttons.unwrap_or(false) {
                                 // reenable buttons
+                                // todo group by channel_id and use get_messages instead of
+                                // a single get_message call for each one (helps with rate-limiting)
                                 let discord_messages = futures::future::join_all(
                                     messages
                                         .iter()

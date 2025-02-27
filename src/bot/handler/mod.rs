@@ -61,6 +61,7 @@ fn setup_ctrlc_handler() -> mpsc::Receiver<()> {
                     let _ = sender.send(());
                 },
                 _ = int_signal.recv() => {
+                    println!("");
                     log::info!("SIGINT received, shutting down...");
                     let _ = sender.send(());
                 },
@@ -132,8 +133,7 @@ impl EventHandler for Handler {
 
 impl Handler {
     async fn shutdown(&self) -> anyhow::Result<()> {
-        println!("");
-        log::info!("Ctrl-C received, waiting for locks and shutting down...");
+        log::info!("Shutdown signal received, waiting for locks and shutting down...");
         let user_map = self.data.user_map.write().await;
         let context = self.data.context.write().await;
 
@@ -162,6 +162,8 @@ impl Handler {
 
             context.shard.shutdown_clean();
         }
+
+        log::info!("Graceful shutdown complete!");
 
         Ok(())
     }
