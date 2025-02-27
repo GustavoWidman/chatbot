@@ -26,6 +26,10 @@ pub struct MemoryRecall {
     storage: Arc<MemoryStorage>,
     #[serde(skip)]
     user_id: UserId,
+    #[serde(skip)]
+    user_name: String,
+    #[serde(skip)]
+    assistant_name: String,
 }
 
 impl MemoryRecall {
@@ -33,11 +37,15 @@ impl MemoryRecall {
         model: Arc<Box<dyn DynEmbeddingModel>>,
         storage: Arc<MemoryStorage>,
         user_id: UserId,
+        user_name: String,
+        assistant_name: String,
     ) -> Self {
         Self {
             model,
             storage,
             user_id,
+            user_name,
+            assistant_name,
         }
     }
 
@@ -59,6 +67,14 @@ impl MemoryRecall {
                 args.limit.unwrap_or(5),
                 args.threshold,
             ))
+        })
+        .map(|mut x| {
+            x.iter_mut()
+                .map(|x| {
+                    x.replace("<user>", self.user_name.as_str())
+                        .replace("<assistant>", self.assistant_name.as_str())
+                })
+                .collect::<Vec<String>>()
         })
     }
 }

@@ -22,7 +22,13 @@ pub struct ChatEngine {
 impl ChatEngine {
     pub async fn new(config: ChatBotConfig, user_id: UserId, http: &Http) -> anyhow::Result<Self> {
         let context = ChatContext::new(&config.context, user_id, http).await;
-        let client = CompletionAgent::new(config.llm.clone(), user_id).await?;
+        let client = CompletionAgent::new(
+            config.llm.clone(),
+            user_id,
+            config.context.system.user_name.clone(),
+            config.context.system.chatbot_name.clone(),
+        )
+        .await?;
 
         Ok(Self { client, context })
     }
@@ -36,7 +42,15 @@ impl ChatEngine {
         context: Option<ChatContext>,
     ) -> anyhow::Result<Self> {
         // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
-        let client = client.unwrap_or(CompletionAgent::new(config.llm.clone(), user_id).await?);
+        let client = client.unwrap_or(
+            CompletionAgent::new(
+                config.llm.clone(),
+                user_id,
+                config.context.system.user_name.clone(),
+                config.context.system.chatbot_name.clone(),
+            )
+            .await?,
+        );
         let context = context.unwrap_or(ChatContext::new(&config.context, user_id, http).await);
 
         Ok(Self { client, context })

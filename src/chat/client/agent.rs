@@ -19,6 +19,11 @@ use crate::{
 use super::providers::{DynCompletionModel, DynEmbeddingModel};
 use super::tools;
 
+pub struct CompletionAgentSettings {
+    user_name: String,
+    assistant_name: String,
+}
+
 pub struct CompletionAgent {
     completion_model: Arc<Box<dyn DynCompletionModel>>,
     embedding_model: Arc<Box<dyn DynEmbeddingModel>>,
@@ -26,10 +31,16 @@ pub struct CompletionAgent {
     tools: HashMap<String, Box<dyn ToolDyn>>,
     user_id: UserId,
     config: LLMConfig,
+    settings: CompletionAgentSettings,
 }
 
 impl CompletionAgent {
-    pub async fn new(config: LLMConfig, user_id: UserId) -> anyhow::Result<Self> {
+    pub async fn new(
+        config: LLMConfig,
+        user_id: UserId,
+        user_name: String,
+        assistant_name: String,
+    ) -> anyhow::Result<Self> {
         let client = config.provider.client(&config.api_key);
         let completion_model = Arc::new(client.completion_model(&config.model).await);
 
@@ -67,10 +78,20 @@ impl CompletionAgent {
         let memory_storage = Arc::new(MemoryStorage::new(&config, vector_size));
         memory_storage.health_check(user_id).await?;
 
-        let recall =
-            tools::MemoryRecall::new(embedding_model.clone(), memory_storage.clone(), user_id);
-        let store =
-            tools::MemoryStore::new(embedding_model.clone(), memory_storage.clone(), user_id);
+        let recall = tools::MemoryRecall::new(
+            embedding_model.clone(),
+            memory_storage.clone(),
+            user_id,
+            user_name.clone(),
+            assistant_name.clone(),
+        );
+        let store = tools::MemoryStore::new(
+            embedding_model.clone(),
+            memory_storage.clone(),
+            user_id,
+            user_name.clone(),
+            assistant_name.clone(),
+        );
 
         let mut tools: HashMap<String, Box<dyn ToolDyn>> = HashMap::new();
         tools.insert(tools::MemoryRecall::NAME.to_string(), Box::new(recall));
@@ -85,6 +106,10 @@ impl CompletionAgent {
             tools,
             user_id,
             config,
+            settings: CompletionAgentSettings {
+                user_name,
+                assistant_name,
+            },
         })
     }
 
@@ -226,7 +251,13 @@ The following memories were recalled automatically from the long term memory sto
         Ok(self
             .memory_storage
             .search(vec, self.user_id, 5, None)
-            .await?)
+            .await?
+            .iter_mut()
+            .map(|x| {
+                x.replace("<user>", &self.settings.user_name)
+                    .replace("<assistant>", &self.settings.assistant_name)
+            })
+            .collect())
     }
 
     pub async fn store(
@@ -239,7 +270,7 @@ The following memories were recalled automatically from the long term memory sto
             .summarize(context.clone(), user_name, assistant_name)
             .await?;
 
-        log::info!("summary: {}", summary);
+        log::info!("summary:\n{}", summary);
 
         let Embedding { document, vec } = self.embedding_model.embed_text(&summary).await?;
         let vec = vec.into_iter().map(|x| x as f32).collect::<Vec<f32>>();
@@ -253,7 +284,55 @@ The following memories were recalled automatically from the long term memory sto
         user_name: String,
         assistant_name: String,
     ) -> anyhow::Result<String> {
-        let preamble = "You are a assistant that summarizes conversations. You will be highly detailed in what you are writing, putting only the most important discoveries/revelations and new information into bullet points. You will not repeat yourself, and you will not use the same bullet points more than once. The summarized input will be inserted into a long term memory storage, so only note the information you believe to be relevant to be eventually recalled in future conversations (new interests, new information, personality revelations, etc.). Do not take note things that are short-termed (the user is going to the bathroom, the user is crying). Only output things that are long-termed (the user likes bananas, the user asked you out on a date) and should be remembered in the future.".to_string();
+        let preamble = "# Summarization Assistant
+You are a specialized summarization assistant that extracts only the most significant, long-term valuable information from conversations. Your purpose is to identify and record information that should be remembered for future interactions.
+
+## Task
+Extract only information that meets ALL of these criteria:
+- Reveals persistent user preferences, interests, values, or traits
+- Has potential relevance beyond the immediate conversation
+- Would naturally be remembered by a human conversation partner
+
+## Format
+- Provide concise bullet points of key information
+- Use consistent, retrievable phrasing
+- Prioritize specificity over generality
+- Include source context when relevant (e.g., \"When discussing travel, mentioned...\")
+- Utilize the <user> and <assistant> tags for user and assistant placeholders
+
+## Avoid
+- Temporary states or short-term information (e.g., \"user is going to the store\", \"user is feeling tired today\")
+- Obvious or common knowledge
+- Conversational mechanics (e.g., \"user asked for help with...\")
+- Speculation about the user
+- Summarizing the entire conversation
+- Creating empty summaries when no meaningful information is present
+
+## Examples
+
+### Example 1
+```json
+{
+    \"good_extraction\": \"<user> lives in Toronto and works as a software engineer\".
+    \"poor_extraction\": \"User is currently at home\"
+}
+```
+
+### Example 2
+```json
+{
+    \"good_extraction\": \"<user> has a 5-year-old daughter named Emma who loves dinosaurs\".
+    \"poor_extraction\": \"<user> needs to pick up their child from school today\"
+}
+```
+
+### Example 3
+```json
+{
+    \"good_extraction\": \"<assistant> mentioned severe peanut allergy multiple times\".
+    \"poor_extraction\": \"<assistant> is hungry\"
+}
+```".to_string();
 
         let prompt = ChatMessage {
             inner: Message::user(
@@ -274,18 +353,26 @@ The following memories were recalled automatically from the long term memory sto
                     .collect::<Vec<String>>()
                     .join("")
                     .trim_end_matches("\n---\n")
+                    .replace(&user_name, "<user>")
+                    .replace(&assistant_name, "<assistant>")
                     .to_owned(),
             ),
             ..Default::default()
         };
 
         let request = CompletionRequest {
+            // todo decide if i want this or not
+            // additional_params: Some(json!({
+            //     "top_p": 0.2,
+            //     "frequency_penalty": 0.2,
+            //     "presence_penalty": 0.0,
+            // })),
             additional_params: None,
             chat_history: vec![],
             documents: vec![],
             max_tokens: None,
             preamble: Some(preamble),
-            temperature: Some(0.0),
+            temperature: Some(0.2),
             tools: vec![],
             prompt: prompt.into(),
         };

@@ -23,6 +23,10 @@ pub struct MemoryStore {
     storage: Arc<MemoryStorage>,
     #[serde(skip)]
     user_id: UserId,
+    #[serde(skip)]
+    user_name: String,
+    #[serde(skip)]
+    assistant_name: String,
 }
 
 impl MemoryStore {
@@ -30,17 +34,25 @@ impl MemoryStore {
         model: Arc<Box<dyn DynEmbeddingModel>>,
         storage: Arc<MemoryStorage>,
         user_id: UserId,
+        user_name: String,
+        assistant_name: String,
     ) -> Self {
         Self {
             model,
             storage,
             user_id,
+            user_name,
+            assistant_name,
         }
     }
 
     fn store(&self, memory: &str) -> anyhow::Result<()> {
+        let memory = memory
+            .replace(self.user_name.as_str(), "<user>")
+            .replace(self.assistant_name.as_str(), "<assistant>");
+
         let Embedding { document, vec } = tokio::task::block_in_place(|| {
-            futures::executor::block_on(self.model.embed_text(memory))
+            futures::executor::block_on(self.model.embed_text(&memory))
         })?;
 
         let vec = vec.into_iter().map(|x| x as f32).collect::<Vec<f32>>();
