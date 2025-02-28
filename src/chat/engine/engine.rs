@@ -16,6 +16,8 @@ use super::super::context::{ChatContext, ChatMessage};
 
 pub struct ChatEngine {
     client: CompletionAgent,
+    config: ChatBotConfig,
+    user_id: UserId,
     context: ChatContext,
 }
 
@@ -30,30 +32,31 @@ impl ChatEngine {
         )
         .await?;
 
-        Ok(Self { client, context })
+        Ok(Self {
+            client,
+            context,
+            user_id,
+            config,
+        })
     }
 
     // initializes with
-    pub async fn new_with(
-        config: ChatBotConfig,
-        user_id: UserId,
-        http: &Http,
-        client: Option<CompletionAgent>,
-        context: Option<ChatContext>,
-    ) -> anyhow::Result<Self> {
+    pub async fn reload(self) -> anyhow::Result<Self> {
         // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
-        let client = client.unwrap_or(
-            CompletionAgent::new(
-                config.llm.clone(),
-                user_id,
-                config.context.system.user_name.clone(),
-                config.context.system.chatbot_name.clone(),
-            )
-            .await?,
-        );
-        let context = context.unwrap_or(ChatContext::new(&config.context, user_id, http).await);
+        let client = CompletionAgent::new(
+            self.config.llm.clone(),
+            self.user_id,
+            self.config.context.system.user_name.clone(),
+            self.config.context.system.chatbot_name.clone(),
+        )
+        .await?;
 
-        Ok(Self { client, context })
+        Ok(Self {
+            client,
+            context: self.context,
+            user_id: self.user_id,
+            config: self.config,
+        })
     }
 
     pub fn into_context(self) -> ChatContext {

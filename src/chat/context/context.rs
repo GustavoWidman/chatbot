@@ -2,6 +2,7 @@ use std::{fs::File, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use branch_context::{Message, Messages};
+use futures::StreamExt;
 use indexmap::IndexMap;
 use rig::message::{Message as RigMessage, UserContent};
 use serde::{Deserialize, Serialize};
@@ -77,6 +78,8 @@ pub struct ContextWindow {
 
 impl ChatContext {
     pub async fn new(config: &ContextConfig, user_id: UserId, http: &Http) -> Self {
+        log::info!("creating new context");
+
         let save_path = &config
             .save_to_disk_folder
             .as_ref()
@@ -106,7 +109,7 @@ impl ChatContext {
                 File::open(path)
                     .ok()
                     .and_then(|mut file| {
-                        serde_cbor::from_reader(&mut file)
+                        ciborium::from_reader(&mut file)
                             .map_err(|e| {
                                 log::error!("Failed to deserialize context: {e}");
                                 e
@@ -125,24 +128,23 @@ impl ChatContext {
                                 // reenable buttons
                                 // todo group by channel_id and use get_messages instead of
                                 // a single get_message call for each one (helps with rate-limiting)
-                                let discord_messages = futures::future::join_all(
-                                    messages
-                                        .iter()
-                                        .filter(|(_, message)| {
-                                            matches!(
+                                let discord_messages = futures::stream::iter(&messages)
+                                    .filter(|(id, message)| {
+                                        futures::future::ready(
+                                            (matches!(
                                                 message.selected().role(),
                                                 MessageRole::Assistant
-                                            )
-                                        })
-                                        .map(async |(id, message)| {
-                                            (id.to_message(&http).await, message)
-                                        })
-                                        .collect::<Vec<_>>(),
-                                )
-                                .await
-                                .into_iter()
-                                .filter_map(|(message, messages)| message.map(|m| (m, messages)))
-                                .collect::<Vec<_>>();
+                                            ) && !id.random),
+                                        )
+                                    })
+                                    .then(async |(id, message)| {
+                                        (id.to_message(&http).await, message)
+                                    })
+                                    .filter_map(|(message, messages)| {
+                                        futures::future::ready(message.map(|m| (m, messages)))
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .await;
 
                                 for (message, messages) in discord_messages {
                                     Handler::enable_buttons(
@@ -194,7 +196,7 @@ impl ChatContext {
 
             let file = File::options().write(true).create(true).open(path)?;
             file.set_len(0)?;
-            serde_cbor::to_writer(file, &self.messages)?;
+            ciborium::into_writer(&self.messages, file)?;
         }
 
         // return the message ids in the index map
@@ -215,6 +217,9 @@ impl ChatContext {
 
     pub fn clear(&mut self) {
         self.messages.clear();
+        if let Some(path) = &self.save_path {
+            std::fs::remove_file(path).ok();
+        }
     }
 
     pub fn add_message(

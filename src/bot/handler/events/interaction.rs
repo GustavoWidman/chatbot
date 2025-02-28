@@ -33,7 +33,11 @@ impl Handler {
                         return HandlerResult::err(why, (ctx.http, *component.message));
                     };
 
-                    let _ = component.defer(ctx.http.clone()).await;
+                    if let Err(err) = component.defer(ctx.http.clone()).await {
+                        log::error!("error deferring component: {err:?}");
+                        return HandlerResult::err(err, (ctx.http, *component.message));
+                    }
+
                     match id {
                         "regen" => self.regen(component.clone(), ctx.clone()).await,
                         "prev" => self.prev(component.clone(), ctx.clone()).await,

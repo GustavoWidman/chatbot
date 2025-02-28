@@ -123,7 +123,7 @@ impl CompletionAgent {
         let recalled = self.rag_recall(&prompt).await?;
         // let recalled: Vec<String> = vec![]; // todo testing
         if !recalled.is_empty() {
-            log::debug!("RAGged {} memories", recalled.len());
+            log::info!("RAGged {} memories", recalled.len());
             system_prompt.push_str("
 ## Spontaneously recalled memories
 
@@ -160,6 +160,8 @@ The following memories were recalled automatically from the long term memory sto
         } else {
             vec![]
         };
+
+        println!("history: {:?}", context);
 
         let request = CompletionRequest {
             additional_params: Some(json!({

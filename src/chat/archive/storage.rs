@@ -153,7 +153,7 @@ impl MemoryStorage {
             .enumerate()
             .filter_map(|(i, point)| {
                 if point.score > threshold {
-                    log::info!(
+                    log::debug!(
                         "payload #{i}:\n{}\nscore: {}",
                         serde_json::to_string_pretty(&point.payload).ok()?,
                         point.score
