@@ -161,8 +161,6 @@ The following memories were recalled automatically from the long term memory sto
             vec![]
         };
 
-        println!("history: {:?}", context);
-
         let request = CompletionRequest {
             additional_params: Some(json!({
                 "top_p": self.config.top_p,
