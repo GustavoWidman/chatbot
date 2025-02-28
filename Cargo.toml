@@ -33,6 +33,6 @@ branch = "main"
 features = ["serde"]
 
 [dependencies.rig-core]
-git = "https://github.com/0xPlaygrounds/rig"
+# git = "https://github.com/0xPlaygrounds/rig"
+git = "https://github.com/GustavoWidman/rig"
 features = ["derive"]
-rev = "67dfae9a66f11033cb548f47c6f5359ad318f0af"
