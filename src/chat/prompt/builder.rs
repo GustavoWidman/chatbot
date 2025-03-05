@@ -56,8 +56,8 @@ impl SystemPromptBuilder {
         }
     }
 
-    pub fn build(mut self, time_since_last: Duration) -> SystemPrompt {
-        let time = if let Some(timezone) = self.timezone {
+    pub fn get_time(&self) -> String {
+        if let Some(timezone) = self.timezone {
             chrono::Utc::now()
                 .with_timezone(&timezone)
                 .format("%Y-%m-%d %H:%M:%S %z")
@@ -66,7 +66,11 @@ impl SystemPromptBuilder {
             chrono::Utc::now()
                 .format("%Y-%m-%d %H:%M:%S %z")
                 .to_string()
-        };
+        }
+    }
+
+    pub fn build(mut self, time_since_last: Duration) -> SystemPrompt {
+        let time = self.get_time();
 
         let time_since = utils::time_to_string(time_since_last);
 

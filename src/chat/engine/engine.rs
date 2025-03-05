@@ -1,7 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
 use anyhow::anyhow;
-use rig::message::Message as RigMessage;
 use serenity::all::{Http, UserId};
 
 use crate::{
@@ -15,7 +14,7 @@ use crate::{
 use super::super::context::{ChatContext, ChatMessage};
 
 pub struct ChatEngine {
-    client: CompletionAgent,
+    pub client: CompletionAgent,
     config: ChatBotConfig,
     user_id: UserId,
     context: ChatContext,
@@ -65,20 +64,25 @@ impl ChatEngine {
 
     pub async fn user_prompt(
         &mut self,
-        prompt: Option<String>,
+        prompt: Option<(String, MessageIdentifier)>,
         context: Option<ContextType>,
     ) -> anyhow::Result<ChatMessage> {
         let retries = 5;
 
         let mut i = 0;
         while i < retries {
+            let (prompt, message_id) = match prompt.clone() {
+                Some((prompt, message_id)) => (Some(prompt), Some(message_id)),
+                None => (None, None),
+            };
+
             let context: ContextWindow = match context {
-                Some(ContextType::User) => self.context.get_context().await?,
-                Some(ContextType::Freewill) => self.context.freewill_context().await?,
+                Some(ContextType::User) => self.context.get_context(prompt).await?,
+                Some(ContextType::Freewill) => self.context.freewill_context(prompt).await?,
                 Some(ContextType::Regen(ref message_id)) => {
                     self.context.get_regen_context(message_id).await?
                 }
-                None => self.context.get_context().await?,
+                None => self.context.get_context(prompt).await?,
             };
 
             if let Some(drained) = context.overflow {
@@ -92,14 +96,8 @@ impl ChatEngine {
                     .await?;
             }
 
-            let prompt = if let Some(prompt) = context.user_prompt {
+            let mut prompt = if let Some(prompt) = context.user_prompt {
                 Some(prompt)
-            } else if let Some(prompt) = prompt.clone() {
-                // we have to clone because of prior or future loops
-                Some(ChatMessage {
-                    inner: RigMessage::user(prompt),
-                    ..Default::default()
-                })
             } else {
                 None
             }
@@ -108,7 +106,7 @@ impl ChatEngine {
             // retry if we get an error as well, but only up to the max retries
             let response = match self
                 .client
-                .completion(prompt, context.system_prompt, context.history)
+                .completion(&mut prompt, context.system_prompt, context.history)
                 .await
             {
                 Ok(response) => response,
@@ -135,6 +133,10 @@ impl ChatEngine {
                             log::warn!("too big, retry #{i}");
                             continue;
                         } else {
+                            self.context.add_user_message(
+                                prompt,
+                                message_id.unwrap_or(MessageIdentifier::random()),
+                            )?;
                             return Ok(message);
                         }
                     } else {

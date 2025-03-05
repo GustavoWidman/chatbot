@@ -1,8 +1,10 @@
 use anyhow::anyhow;
-use rig::message::Message as RigMessage;
 use serenity::all::{Context, Message, MessageUpdateEvent};
 
-use crate::chat::{ChatMessage, engine::EngineGuard};
+use crate::{
+    chat::{ChatMessage, context::UserPrompt, engine::EngineGuard},
+    utils,
+};
 
 use super::{super::Handler, error::HandlerResult};
 
@@ -47,6 +49,34 @@ impl Handler {
 
         let mut engine = guard.engine().await.write().await;
 
+        let user_prompt = match async {
+            let mut user_prompt = UserPrompt {
+                content: Some(new_content),
+                current_time: engine.config.system.get_time(),
+                relevant_memories: vec![],
+                time_since: utils::time_to_string(engine.time_since_last()),
+                system_note: None,
+            };
+            engine.client.rag_recall(&mut user_prompt).await?;
+
+            Ok::<UserPrompt, anyhow::Error>(user_prompt)
+        }
+        .await
+        {
+            Ok(user_prompt) => user_prompt,
+            Err(why) => {
+                log::error!("failed to rag recall: {why:?}");
+                return HandlerResult::err(
+                    why,
+                    (
+                        ctx.http,
+                        event.channel_id,
+                        event.message_reference.flatten(),
+                    ),
+                );
+            }
+        };
+
         // user message
         let messages = match engine.find_mut(&(event.id, event.channel_id).into()) {
             Some(messages) => messages,
@@ -67,10 +97,25 @@ impl Handler {
         };
 
         // push the new message and select it
-        messages.push(ChatMessage {
-            inner: RigMessage::user(new_content),
-            ..Default::default()
-        });
+        // messages.push(ChatMessage::user(new_content));
+        if let Err(why) = async {
+            messages.push(TryInto::<ChatMessage>::try_into(user_prompt)?);
+
+            Ok::<(), anyhow::Error>(())
+        }
+        .await
+        {
+            log::error!("failed to push message: {why:?}");
+
+            return HandlerResult::err(
+                why,
+                (
+                    ctx.http,
+                    event.channel_id,
+                    event.message_reference.flatten(),
+                ),
+            );
+        }
 
         HandlerResult::ok(())
     }

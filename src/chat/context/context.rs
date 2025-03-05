@@ -63,14 +63,50 @@ impl MessageIdentifier {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserPrompt {
+    pub content: Option<String>,
+    pub current_time: String,
+    #[serde(rename = "time_since_last_message")]
+    pub time_since: String,
+    pub relevant_memories: Vec<String>,
+    pub system_note: Option<String>,
+}
+
 pub struct ChatContext {
     messages: IndexMap<MessageIdentifier, Messages<ChatMessage>>,
     save_path: Option<PathBuf>,
     pub config: ContextConfig,
 }
+impl TryInto<ChatMessage> for UserPrompt {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<ChatMessage, Self::Error> {
+        Ok(ChatMessage::user(serde_json::to_string(&self)?))
+    }
+}
+impl TryInto<RigMessage> for UserPrompt {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<RigMessage, Self::Error> {
+        Ok(RigMessage::user(serde_json::to_string(&self)?))
+    }
+}
+impl TryFrom<ChatMessage> for UserPrompt {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ChatMessage) -> Result<Self, Self::Error> {
+        serde_json::from_str::<Self>(
+            &value
+                .content()
+                .ok_or(anyhow::anyhow!("message does not have a content"))?,
+        )
+        .map_err(|why| anyhow::anyhow!("failed to deserialize user prompt: {why:?}"))
+    }
+}
 
 pub struct ContextWindow {
-    pub user_prompt: Option<ChatMessage>,
+    pub user_prompt: Option<UserPrompt>,
     pub system_prompt: String,
     pub history: Vec<ChatMessage>,
     pub overflow: Option<Vec<ChatMessage>>,
@@ -231,14 +267,14 @@ impl ChatContext {
         self.messages.insert(id.into(), message);
     }
 
-    pub fn add_user_message(&mut self, message: String, id: impl Into<MessageIdentifier>) {
-        self.add_message(
-            ChatMessage {
-                inner: RigMessage::user(message),
-                ..Default::default()
-            },
-            id,
-        );
+    pub fn add_user_message(
+        &mut self,
+        message: UserPrompt,
+        id: impl Into<MessageIdentifier>,
+    ) -> anyhow::Result<()> {
+        self.add_message(TryInto::<ChatMessage>::try_into(message)?, id);
+
+        Ok(())
     }
 
     pub fn latest(&self) -> Option<&Messages<ChatMessage>> {
@@ -321,7 +357,18 @@ impl ChatContext {
             .collect::<Vec<_>>()
     }
 
-    pub async fn get_context(&mut self) -> Result<ContextWindow> {
+    pub async fn get_context(&mut self, user_prompt: Option<String>) -> Result<ContextWindow> {
+        let user_prompt: Option<UserPrompt> = match user_prompt {
+            Some(prompt) => Some(UserPrompt {
+                content: Some(prompt),
+                current_time: self.config.system.get_time(),
+                relevant_memories: vec![],
+                time_since: utils::time_to_string(self.time_since_last()),
+                system_note: None,
+            }),
+            None => None,
+        };
+
         if self.messages.is_empty() {
             let system_prompt = self
                 .config
@@ -333,7 +380,7 @@ impl ChatContext {
                 history: vec![],
                 overflow: None,
                 system_prompt: system_prompt.to_string(),
-                user_prompt: None,
+                user_prompt,
             });
         }
 
@@ -342,13 +389,10 @@ impl ChatContext {
 
         let drained = self.drain_overflow().await;
 
-        let system_prompt = self.config.system.clone().build(
-            // unwrapping is safe because we know the context is not empty
-            self.time_since_last().unwrap(),
-        );
+        let system_prompt = self.config.system.clone().build(self.time_since_last());
 
         Ok(ContextWindow {
-            user_prompt: None,
+            user_prompt,
             system_prompt: system_prompt.to_string(),
             history: ctx,
             overflow: drained,
@@ -388,41 +432,44 @@ impl ChatContext {
             .map(|idx| ctx.remove(idx))
             .ok_or_else(|| anyhow::anyhow!("No user text messages found for prompting"))?;
 
-        let system_prompt = self.config.system.clone().build(
-            // unwrapping is safe because we know the context is not empty
-            self.time_since_last().unwrap(),
-        );
+        let system_prompt = self.config.system.clone().build(self.time_since_last());
 
         // if let Some(pos) = context.iter().rposition(|m| m.role == "assistant") {
         //     context.remove(pos);
         // }
 
         Ok(ContextWindow {
-            user_prompt: Some(last_message),
+            user_prompt: Some(last_message.try_into()?),
             history: ctx,
             system_prompt: system_prompt.to_string(),
             overflow: None, // there is no overflow when regenerating
         })
     }
 
-    pub async fn freewill_context(&mut self) -> Result<ContextWindow> {
+    pub async fn freewill_context(&mut self, user_prompt: Option<String>) -> Result<ContextWindow> {
         let ContextWindow {
             history,
             overflow,
             system_prompt,
             ..
-        } = self.get_context().await?;
+        } = self.get_context(user_prompt).await?;
 
-        let message = ChatMessage {
-            inner: RigMessage::user(format!(
-                "*it's been around {} since you last said something, and the user did not respond. your next response should attempt to pull the user back into the conversation. please respond once again, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. your response should only contain the actual response, not your thoughts or anything else.*\n\n\"...\"",
-                utils::time_to_string(self.time_since_last()?)
-            )),
-            ..Default::default()
+        // let message = ChatMessage::user(format!(
+        //     "*it's been around {} since you last said something, and the user did not respond. your next response should attempt to pull the user back into the conversation. please respond once again, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. your response should only contain the actual response, not your thoughts or anything else.*\n\n\"...\"",
+        //     utils::time_to_string(self.time_since_last()?)
+        // ));
+        let message = UserPrompt {
+            content: None,
+            current_time: self.config.system.get_time(),
+            relevant_memories: vec![],
+            time_since: utils::time_to_string(self.time_since_last()),
+            system_note: Some(
+                "Please attempt to pull the user back into the conversation, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. Your response should only contain the actual response, not your thoughts or anything else.".to_string(),
+            ),
         };
 
         // id-less message
-        self.add_message(message.clone(), None);
+        self.add_message(TryInto::<ChatMessage>::try_into(message.clone())?, None);
 
         Ok(ContextWindow {
             user_prompt: Some(message),
@@ -432,12 +479,13 @@ impl ChatContext {
         })
     }
 
-    pub fn time_since_last(&self) -> anyhow::Result<chrono::Duration> {
-        let last = self
-            .latest()
-            .ok_or(anyhow!("Context is empty, there's no last message"))?;
+    pub fn time_since_last(&self) -> chrono::Duration {
+        let last = match self.latest() {
+            Some(last) => last,
+            None => return chrono::Duration::seconds(0),
+        };
 
-        Ok(chrono::Utc::now() - last.selected().sent_at)
+        chrono::Utc::now() - last.selected().sent_at
     }
 
     #[allow(unused)]

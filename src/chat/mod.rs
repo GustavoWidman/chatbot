@@ -1,6 +1,6 @@
 mod archive;
 pub mod client;
-mod context;
+pub mod context;
 pub mod engine;
 pub mod prompt;
 

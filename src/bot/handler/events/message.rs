@@ -22,9 +22,11 @@ impl Handler {
             let mut engine = guard.engine().await.write().await;
 
             let response = engine
-                .user_prompt(Some(msg.content.clone()), Some(ContextType::User))
+                .user_prompt(
+                    Some((msg.content.clone(), (msg.id, msg.channel_id).into())),
+                    Some(ContextType::User),
+                )
                 .await?;
-            engine.add_user_message(msg.content.clone(), (msg.id, msg.channel_id));
 
             let message = CreateMessage::new()
                 // unwrap is safe because user_prompt guarantees a content

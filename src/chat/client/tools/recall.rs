@@ -71,7 +71,8 @@ impl MemoryRecall {
         .map(|mut x| {
             x.iter_mut()
                 .map(|x| {
-                    x.replace("<user>", self.user_name.as_str())
+                    x.content
+                        .replace("<user>", self.user_name.as_str())
                         .replace("<assistant>", self.assistant_name.as_str())
                 })
                 .collect::<Vec<String>>()

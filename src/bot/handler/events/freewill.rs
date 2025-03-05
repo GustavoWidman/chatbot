@@ -155,10 +155,7 @@ impl Handler {
 
         let engine = guard.engine().await.read().await;
 
-        let time_since_last = engine
-            .time_since_last()
-            .map(|t| t.num_seconds() as f64)
-            .unwrap_or(0.0);
+        let time_since_last = engine.time_since_last().num_seconds() as f64;
 
         data.config.write().await.update();
         let config = data.config.read().await;

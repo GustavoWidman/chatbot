@@ -4,7 +4,10 @@ use serde_json::{Value, json};
 use serenity::all::UserId;
 use std::sync::Arc;
 
-use crate::chat::{archive::storage::MemoryStorage, client::providers::DynEmbeddingModel};
+use crate::chat::{
+    archive::storage::{Memory, MemoryStorage},
+    client::providers::DynEmbeddingModel,
+};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Memory Store error")]
@@ -58,7 +61,11 @@ impl MemoryStore {
         let vec = vec.into_iter().map(|x| x as f32).collect::<Vec<f32>>();
 
         tokio::task::block_in_place(|| {
-            futures::executor::block_on(self.storage.store(document, vec, self.user_id))
+            futures::executor::block_on(self.storage.store(
+                Memory::new(document),
+                vec,
+                self.user_id,
+            ))
         })
     }
 }

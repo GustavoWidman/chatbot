@@ -1,15 +1,55 @@
 use std::collections::HashMap;
 
+use chrono::{DateTime, TimeZone, Utc};
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
-        CreateCollectionBuilder, Distance, PointStruct, SearchPointsBuilder, UpsertPointsBuilder,
-        Value, VectorParamsBuilder, vectors_config::Config,
+        Condition, CreateCollectionBuilder, Distance, FieldCondition, Filter, PointStruct, Range,
+        ScrollPointsBuilder, SearchPointsBuilder, UpsertPointsBuilder, Value, VectorParamsBuilder,
+        condition::ConditionOneOf, point_id::PointIdOptions, vectors_config::Config,
     },
 };
+use serde::{Deserialize, Serialize};
 use serenity::all::UserId;
 
 use crate::config::structure::LLMConfig;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub struct Memory {
+    pub id: u64,
+    pub content: String,
+    // pub topic: String,
+    pub date: DateTime<Utc>,
+}
+impl Memory {
+    pub fn new(content: String) -> Self {
+        Self {
+            id: rand::random(),
+            content,
+            date: Utc::now(),
+        }
+    }
+    pub fn into(self) -> Payload {
+        Payload::from(HashMap::from([
+            ("content".to_string(), Value::from(self.content)),
+            // ("topic".to_string(), Value::from(self.topic)),
+            (
+                "date".to_string(),
+                Value::from(self.date.timestamp_millis()),
+            ),
+        ]))
+    }
+    pub fn try_from(id: u64, payload: HashMap<String, Value>) -> Option<Self> {
+        Some(Self {
+            id,
+            content: payload.get("content")?.to_string(),
+            // topic: payload.get("topic")?.to_string(),
+            date: Utc
+                .timestamp_millis_opt(payload.get("date")?.as_integer()?)
+                .single()?,
+        })
+    }
+}
 
 pub struct MemorySettings {
     pub vector_size: u64,
@@ -104,17 +144,13 @@ impl MemoryStorage {
 
     pub async fn store(
         &self,
-        text: String,
+        memory: Memory,
         embedding: Vec<f32>,
         user_id: UserId,
     ) -> anyhow::Result<()> {
         let collection_name = self.try_create_collection(user_id).await?;
 
-        let points = vec![PointStruct::new(
-            rand::random::<u64>(),
-            embedding,
-            Payload::from(HashMap::from([("memory".to_string(), Value::from(text))])),
-        )];
+        let points = vec![PointStruct::new(memory.id, embedding, memory.into())];
         self.client
             .upsert_points(UpsertPointsBuilder::new(collection_name, points))
             .await?;
@@ -128,7 +164,7 @@ impl MemoryStorage {
         user_id: UserId,
         limit: u64,
         threshold: Option<f32>,
-    ) -> anyhow::Result<Vec<String>> {
+    ) -> anyhow::Result<Vec<Memory>> {
         let threshold = threshold.unwrap_or(self.settings.similarity_threshold);
 
         let embedding = embedding
@@ -152,6 +188,12 @@ impl MemoryStorage {
             .into_iter()
             .enumerate()
             .filter_map(|(i, point)| {
+                let id = if let PointIdOptions::Num(id) = point.id?.point_id_options? {
+                    id
+                } else {
+                    return None;
+                };
+
                 if point.score > threshold {
                     log::debug!(
                         "payload #{i}:\n{}\nscore: {}",
@@ -159,13 +201,65 @@ impl MemoryStorage {
                         point.score
                     );
 
-                    let payload = point.payload;
-                    let memory = payload.get("memory")?.as_str()?;
-
-                    Some(memory.to_string())
+                    Some(Memory::try_from(id, point.payload)?)
                 } else {
                     None
                 }
+            })
+            .collect())
+    }
+
+    #[allow(unused)]
+    pub async fn find_recent(
+        &self,
+        user_id: UserId,
+        limit: u32,
+        range: Option<chrono::Duration>,
+    ) -> anyhow::Result<Vec<Memory>> {
+        let collection_name = self.try_create_collection(user_id).await?;
+
+        let range = range.unwrap_or_else(|| chrono::Duration::days(1));
+        let lower_bound_ts = (Utc::now() - range).timestamp_millis();
+
+        // Build a filter: only return points whose "date" field is >= lower_bound_ts.
+        let filter = Filter {
+            must: vec![Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "date".to_string(),
+                    range: Some(Range {
+                        gt: None,
+                        gte: Some(lower_bound_ts as f64),
+                        lt: None,
+                        lte: None,
+                    }),
+                    ..Default::default()
+                })),
+            }],
+            ..Default::default()
+        };
+
+        // Use scroll_points to get points matching the filter.
+        let scroll_result = self
+            .client
+            .scroll(
+                ScrollPointsBuilder::new(collection_name)
+                    .with_payload(true)
+                    .filter(filter)
+                    .limit(limit),
+            )
+            .await?;
+
+        Ok(scroll_result
+            .result
+            .into_iter()
+            .filter_map(|point| {
+                let id = if let PointIdOptions::Num(id) = point.id?.point_id_options? {
+                    id
+                } else {
+                    return None;
+                };
+
+                Some(Memory::try_from(id, point.payload)?)
             })
             .collect())
     }

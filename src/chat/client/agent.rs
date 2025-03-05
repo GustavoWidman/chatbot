@@ -12,7 +12,11 @@ use serde_json::json;
 use serenity::all::UserId;
 
 use crate::{
-    chat::{ChatMessage, archive::storage::MemoryStorage, context::MessageRole},
+    chat::{
+        ChatMessage,
+        archive::storage::{Memory, MemoryStorage},
+        context::{MessageRole, UserPrompt},
+    },
     config::structure::LLMConfig,
 };
 
@@ -115,37 +119,25 @@ impl CompletionAgent {
 
     pub async fn completion(
         &self,
-        prompt: ChatMessage,
+        mut prompt: &mut UserPrompt,
         mut system_prompt: String,
         context: Vec<ChatMessage>,
     ) -> anyhow::Result<CompletionResult> {
         //? traditional RAG
-        let recalled = self.rag_recall(&prompt).await?;
+        self.rag_recall(&mut prompt).await?;
         // let recalled: Vec<String> = vec![]; // todo testing
-        if !recalled.is_empty() {
-            log::info!("RAGged {} memories", recalled.len());
-            system_prompt.push_str("
-## Spontaneously recalled memories
 
-The following memories were recalled automatically from the long term memory storage based on the user's input:
-
-");
-            let formatted = recalled
-                .into_iter()
-                .enumerate()
-                .map(|(i, mem)| {
-                    log::trace!("recalled: {mem:?}");
-                    format!(
-                        "### Spontaneous Memory {}\n```memory\n{}\n```\n",
-                        i + 1,
-                        mem
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            system_prompt.push_str(&formatted);
+        log::trace!("User prompt: {prompt:?}");
+        for (i, message) in context.iter().enumerate() {
+            log::trace!("Context {i}: {message:?}");
         }
+
+        // let recent = self
+        //     .memory_storage
+        //     .find_recent(self.user_id, 5, None)
+        //     .await?;
+
+        // log::info!("recent memories: {:?}", recent);
 
         //? rag by tool (incentive)
         let use_tools = self.config.use_tools.unwrap_or(true);
@@ -153,7 +145,7 @@ The following memories were recalled automatically from the long term memory sto
             system_prompt.push_str("
 ## Tool Usage
 - Actively try to utilize the memory_store tool to store important information that you'd like to recall later in the long term memory storage, preferably in bullet points. Do not mention the usage of this tool to the user, just use it when needed.
-- Actively try to utilize the memory_recall tool to recall information from previous messages and conversations you are not currently aware of. Do not mention this usage of the tool to the user, just use it when needed. If you believe a memory has already been recalled in the \"Spontaneously recalled memories\" section, choose not to recall it again.
+- Actively try to utilize the memory_recall tool to recall information from previous messages and conversations you are not currently aware of. Do not mention this usage of the tool to the user, just use it when needed. If you believe a memory has already been recalled by the user (as seen in the \"relevant_memories\" section), choose not to recall it again.
 
 ");
             self.tool_definitions().await
@@ -172,7 +164,7 @@ The following memories were recalled automatically from the long term memory sto
             // preamble: None, // todo testing
             temperature: self.config.temperature,
             tools,
-            prompt: prompt.into(),
+            prompt: prompt.clone().try_into()?,
         };
 
         let response = self.completion_model.completion(request).await?;
@@ -233,10 +225,14 @@ The following memories were recalled automatically from the long term memory sto
         }
     }
 
-    async fn rag_recall(&self, prompt: &ChatMessage) -> anyhow::Result<Vec<String>> {
-        let message = prompt
-            .content()
-            .ok_or(anyhow::anyhow!("message does not have a content"))?;
+    pub async fn rag_recall(&self, prompt: &mut UserPrompt) -> anyhow::Result<()> {
+        let message = if let Some(content) = &prompt.content {
+            content
+        } else {
+            return Ok(());
+        };
+
+        log::trace!("RAG query message: {message}");
 
         let vec = self
             .embedding_model
@@ -248,16 +244,24 @@ The following memories were recalled automatically from the long term memory sto
             .collect::<Vec<f32>>();
 
         // todo change limit here
-        Ok(self
+        let recalled = self
             .memory_storage
             .search(vec, self.user_id, 5, None)
             .await?
             .iter_mut()
             .map(|x| {
-                x.replace("<user>", &self.settings.user_name)
+                x.content
+                    .replace("<user>", &self.settings.user_name)
                     .replace("<assistant>", &self.settings.assistant_name)
             })
-            .collect())
+            .collect::<Vec<_>>();
+
+        if !recalled.is_empty() {
+            log::info!("RAGged {} memories", recalled.len());
+            prompt.relevant_memories.extend(recalled);
+        }
+
+        Ok(())
     }
 
     pub async fn store(
@@ -275,7 +279,9 @@ The following memories were recalled automatically from the long term memory sto
         let Embedding { document, vec } = self.embedding_model.embed_text(&summary).await?;
         let vec = vec.into_iter().map(|x| x as f32).collect::<Vec<f32>>();
 
-        self.memory_storage.store(document, vec, self.user_id).await
+        self.memory_storage
+            .store(Memory::new(document), vec, self.user_id)
+            .await
     }
 
     async fn summarize(
@@ -334,31 +340,28 @@ Extract only information that meets ALL of these criteria:
 }
 ```".to_string();
 
-        let prompt = ChatMessage {
-            inner: Message::user(
-                context
-                    .into_iter()
-                    .filter_map(|msg| {
-                        let content = msg.content()?;
-                        let role = msg.role();
-                        Some(format!(
-                            "{}: {}\n---\n",
-                            match role {
-                                MessageRole::User => user_name.clone(),
-                                MessageRole::Assistant => assistant_name.clone(),
-                            },
-                            content
-                        ))
-                    })
-                    .collect::<Vec<String>>()
-                    .join("")
-                    .trim_end_matches("\n---\n")
-                    .replace(&user_name, "<user>")
-                    .replace(&assistant_name, "<assistant>")
-                    .to_owned(),
-            ),
-            ..Default::default()
-        };
+        let prompt = Message::user(
+            context
+                .into_iter()
+                .filter_map(|msg| {
+                    let content = msg.content()?;
+                    let role = msg.role();
+                    Some(format!(
+                        "{}: {}\n---\n",
+                        match role {
+                            MessageRole::User => user_name.clone(),
+                            MessageRole::Assistant => assistant_name.clone(),
+                        },
+                        content
+                    ))
+                })
+                .collect::<Vec<String>>()
+                .join("")
+                .trim_end_matches("\n---\n")
+                .replace(&user_name, "<user>")
+                .replace(&assistant_name, "<assistant>")
+                .to_owned(),
+        );
 
         let request = CompletionRequest {
             // todo decide if i want this or not
@@ -374,7 +377,7 @@ Extract only information that meets ALL of these criteria:
             preamble: Some(preamble),
             temperature: Some(0.2),
             tools: vec![],
-            prompt: prompt.into(),
+            prompt,
         };
 
         let response = self.completion_model.completion(request).await?;
