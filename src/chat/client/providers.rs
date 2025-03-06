@@ -221,28 +221,64 @@ impl Display for Provider {
 }
 
 impl Provider {
-    pub fn client(&self, api_key: &str) -> ProviderClient {
+    pub fn client(&self, api_key: &str, custom_url: Option<&str>) -> ProviderClient {
         match self {
             // todo: might be a good idea to add support for other anthropic-specific configurations
             // like `anthropic_version` and `anthropic_beta`
             Provider::Anthropic => {
-                ProviderClient::Anthropic(anthropic::ClientBuilder::new(api_key).build())
+                let builder = anthropic::ClientBuilder::new(api_key);
+                if let Some(url) = custom_url {
+                    ProviderClient::Anthropic(builder.base_url(url).build())
+                } else {
+                    ProviderClient::Anthropic(builder.build())
+                }
             }
 
+            // todo fix
             Provider::Azure => ProviderClient::Azure(azure::Client::from_env()),
-            Provider::Cohere => ProviderClient::Cohere(cohere::Client::new(api_key)),
-            Provider::Deepseek => ProviderClient::Deepseek(deepseek::Client::new(api_key)),
+
+            Provider::Cohere => match custom_url {
+                None => ProviderClient::Cohere(cohere::Client::new(api_key)),
+                Some(url) => ProviderClient::Cohere(cohere::Client::from_url(api_key, url)),
+            },
+            Provider::Deepseek => match custom_url {
+                None => ProviderClient::Deepseek(deepseek::Client::new(api_key)),
+                Some(url) => ProviderClient::Deepseek(deepseek::Client::from_url(api_key, url)),
+            },
 
             // todo: might be a good idea to eventually add a clause for the `None` case
             // (it's meant to be the 'fine tuning' api key)
-            Provider::Galadriel => ProviderClient::Galadriel(galadriel::Client::new(api_key, None)),
+            Provider::Galadriel => match custom_url {
+                None => ProviderClient::Galadriel(galadriel::Client::new(api_key, None)),
+                Some(url) => {
+                    ProviderClient::Galadriel(galadriel::Client::from_url(api_key, url, None))
+                }
+            },
 
-            Provider::Gemini => ProviderClient::Gemini(gemini::Client::new(api_key)),
-            Provider::Groq => ProviderClient::Groq(groq::Client::new(api_key)),
-            Provider::Hyperbolic => ProviderClient::Hyperbolic(hyperbolic::Client::new(api_key)),
-            Provider::Moonshot => ProviderClient::Moonshot(moonshot::Client::new(api_key)),
-            Provider::OpenAI => ProviderClient::OpenAI(openai::Client::new(api_key)),
-            Provider::Perplexity => ProviderClient::Perplexity(perplexity::Client::new(api_key)),
+            Provider::Gemini => match custom_url {
+                None => ProviderClient::Gemini(gemini::Client::new(api_key)),
+                Some(url) => ProviderClient::Gemini(gemini::Client::from_url(api_key, url)),
+            },
+            Provider::Groq => match custom_url {
+                None => ProviderClient::Groq(groq::Client::new(api_key)),
+                Some(url) => ProviderClient::Groq(groq::Client::from_url(api_key, url)),
+            },
+            Provider::Hyperbolic => match custom_url {
+                None => ProviderClient::Hyperbolic(hyperbolic::Client::new(api_key)),
+                Some(url) => ProviderClient::Hyperbolic(hyperbolic::Client::from_url(api_key, url)),
+            },
+            Provider::Moonshot => match custom_url {
+                None => ProviderClient::Moonshot(moonshot::Client::new(api_key)),
+                Some(url) => ProviderClient::Moonshot(moonshot::Client::from_url(api_key, url)),
+            },
+            Provider::OpenAI => match custom_url {
+                None => ProviderClient::OpenAI(openai::Client::new(api_key)),
+                Some(url) => ProviderClient::OpenAI(openai::Client::from_url(api_key, url)),
+            },
+            Provider::Perplexity => match custom_url {
+                None => ProviderClient::Perplexity(perplexity::Client::new(api_key)),
+                Some(url) => ProviderClient::Perplexity(perplexity::Client::from_url(api_key, url)),
+            },
             Provider::Xai => ProviderClient::Xai(xai::Client::new(api_key)),
         }
     }

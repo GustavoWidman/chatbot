@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::anyhow;
+use regex::Regex;
 use rig::{
     OneOrMany,
     completion::{CompletionRequest, ToolDefinition},
@@ -45,13 +46,21 @@ impl CompletionAgent {
         user_name: String,
         assistant_name: String,
     ) -> anyhow::Result<Self> {
-        let client = config.provider.client(&config.api_key);
+        let client = config
+            .provider
+            .client(&config.api_key, config.custom_url.as_deref());
         let completion_model = Arc::new(client.completion_model(&config.model).await);
 
         let embedding_client = config
             .embedding_provider
             .map(|provider| {
-                provider.client(&config.embedding_api_key.as_ref().unwrap_or(&config.api_key))
+                provider.client(
+                    config
+                        .embedding_api_key
+                        .as_deref()
+                        .unwrap_or(&config.api_key),
+                    config.embedding_custom_url.as_deref(),
+                )
             })
             .unwrap_or(client);
 
@@ -174,6 +183,10 @@ impl CompletionAgent {
                 if self.config.force_lowercase.unwrap_or(false) {
                     text.text = text.text.to_lowercase();
                 }
+
+                // get rid of CoT
+                let regex = Regex::new(r"<think>(?:.|\n)*<\/think>(?:\n*)?")?;
+                text.text = regex.replace_all(&text.text, "").to_string();
 
                 Ok(CompletionResult::Message(Message::Assistant {
                     content: OneOrMany::one(AssistantContent::text(&text.text)),

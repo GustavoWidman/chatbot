@@ -9,8 +9,12 @@ pub enum KeyChoice {
     #[name = "API Key"]
     ApiKey,
     Model,
+    #[name = "Custom URL"]
+    CustomUrl,
     #[name = "Embedding Model"]
     EmbeddingModel,
+    #[name = "Embedding Custom URL"]
+    EmbeddingCustomUrl,
     #[name = "Embedding Provider"]
     EmbeddingProvider,
     #[name = "Embedding API Key"]
@@ -42,6 +46,8 @@ impl Display for KeyChoice {
         match self {
             Self::ApiKey => write!(f, "API Key"),
             Self::Model => write!(f, "Model"),
+            Self::CustomUrl => write!(f, "Custom URL"),
+            Self::EmbeddingCustomUrl => write!(f, "Embedding Custom URL"),
             Self::EmbeddingModel => write!(f, "Embedding Model"),
             Self::EmbeddingProvider => write!(f, "Embedding Provider"),
             Self::EmbeddingApiKey => write!(f, "Embedding API Key"),
@@ -90,6 +96,20 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                         config.llm.embedding_api_key = None;
                     } else {
                         config.llm.embedding_api_key = Some(value.clone());
+                    }
+                }
+                KeyChoice::EmbeddingCustomUrl => {
+                    if value.trim().is_empty() {
+                        config.llm.embedding_custom_url = None;
+                    } else {
+                        config.llm.embedding_custom_url = Some(value.clone());
+                    }
+                }
+                KeyChoice::CustomUrl => {
+                    if value.trim().is_empty() {
+                        config.llm.custom_url = None;
+                    } else {
+                        config.llm.custom_url = Some(value.clone());
                     }
                 }
                 KeyChoice::UseTools => {
@@ -214,51 +234,86 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
         } else {
             let config = data.config.read().await;
 
-            let value: Option<String> = match key {
-                KeyChoice::ApiKey => Some(format!("||{}||", config.llm.api_key)),
-                KeyChoice::Model => Some(config.llm.model.clone()),
-                KeyChoice::EmbeddingModel => Some(config.llm.embedding_model.clone()),
-                KeyChoice::EmbeddingProvider => config
-                    .llm
-                    .embedding_provider
-                    .map(|provider| provider.to_string()),
-                KeyChoice::EmbeddingApiKey => config
-                    .llm
-                    .embedding_api_key
-                    .clone()
-                    .map(|api_key| format!("||{}||", api_key)),
-                KeyChoice::ForceLowercase => config
-                    .llm
-                    .force_lowercase
-                    .map(|force_lowercase| force_lowercase.to_string()),
-                KeyChoice::UseTools => config.llm.use_tools.map(|use_tools| use_tools.to_string()),
-                KeyChoice::Provider => Some(config.llm.provider.to_string()),
-                KeyChoice::MaxTokens => config
-                    .llm
-                    .max_tokens
-                    .map(|max_tokens| max_tokens.to_string()),
-                KeyChoice::Temperature => config
-                    .llm
-                    .temperature
-                    .map(|temperature| temperature.to_string()),
-                KeyChoice::TopP => config.llm.top_p.map(|top_p| top_p.to_string()),
-                KeyChoice::VectorSize => config
-                    .llm
-                    .vector_size
-                    .map(|vector_size| vector_size.to_string()),
-                KeyChoice::SimilarityThreshold => config
-                    .llm
-                    .similarity_threshold
-                    .map(|similarity_threshold| similarity_threshold.to_string()),
-                KeyChoice::QdrantHost => Some(config.llm.qdrant_host.clone()),
-                KeyChoice::QdrantPort => config
-                    .llm
-                    .qdrant_port
-                    .map(|qdrant_port| qdrant_port.to_string()),
-                KeyChoice::QdrantHttps => config
-                    .llm
-                    .qdrant_https
-                    .map(|qdrant_https| qdrant_https.to_string()),
+            let (value, sensitive): (Option<String>, bool) = match key {
+                KeyChoice::ApiKey => (Some(config.llm.api_key.clone()), true),
+                KeyChoice::Model => (Some(config.llm.model.clone()), false),
+                KeyChoice::EmbeddingModel => (Some(config.llm.embedding_model.clone()), false),
+                KeyChoice::EmbeddingCustomUrl => (config.llm.embedding_custom_url.clone(), false),
+                KeyChoice::CustomUrl => (config.llm.custom_url.clone(), false),
+                KeyChoice::EmbeddingProvider => (
+                    config
+                        .llm
+                        .embedding_provider
+                        .map(|provider| provider.to_string()),
+                    false,
+                ),
+                KeyChoice::EmbeddingApiKey => (config.llm.embedding_api_key.clone(), true),
+                KeyChoice::ForceLowercase => (
+                    config
+                        .llm
+                        .force_lowercase
+                        .map(|force_lowercase| force_lowercase.to_string()),
+                    false,
+                ),
+                KeyChoice::UseTools => (
+                    config.llm.use_tools.map(|use_tools| use_tools.to_string()),
+                    false,
+                ),
+                KeyChoice::Provider => (Some(config.llm.provider.to_string()), false),
+                KeyChoice::MaxTokens => (
+                    config
+                        .llm
+                        .max_tokens
+                        .map(|max_tokens| max_tokens.to_string()),
+                    false,
+                ),
+                KeyChoice::Temperature => (
+                    config
+                        .llm
+                        .temperature
+                        .map(|temperature| temperature.to_string()),
+                    false,
+                ),
+                KeyChoice::TopP => (config.llm.top_p.map(|top_p| top_p.to_string()), false),
+                KeyChoice::VectorSize => (
+                    config
+                        .llm
+                        .vector_size
+                        .map(|vector_size| vector_size.to_string()),
+                    false,
+                ),
+                KeyChoice::SimilarityThreshold => (
+                    config
+                        .llm
+                        .similarity_threshold
+                        .map(|similarity_threshold| similarity_threshold.to_string()),
+                    false,
+                ),
+                KeyChoice::QdrantHost => (Some(config.llm.qdrant_host.clone()), false),
+                KeyChoice::QdrantPort => (
+                    config
+                        .llm
+                        .qdrant_port
+                        .map(|qdrant_port| qdrant_port.to_string()),
+                    false,
+                ),
+                KeyChoice::QdrantHttps => (
+                    config
+                        .llm
+                        .qdrant_https
+                        .map(|qdrant_https| qdrant_https.to_string()),
+                    false,
+                ),
+            };
+
+            let value = if let Some(value) = value {
+                Some(if sensitive {
+                    format!("||`{}`||", value)
+                } else {
+                    format!("`{}`", value)
+                })
+            } else {
+                None
             };
 
             let content = match value {

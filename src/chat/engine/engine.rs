@@ -128,6 +128,7 @@ impl ChatEngine {
                     let content = message.content();
 
                     if let Some(content) = content {
+                        log::trace!("output: {content}");
                         if content.len() > 2000 {
                             i += 1;
                             log::warn!("too big, retry #{i}");
