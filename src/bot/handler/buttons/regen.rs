@@ -13,21 +13,19 @@ impl Handler {
         mut component: ComponentInteraction,
         ctx: Context,
     ) -> anyhow::Result<()> {
-        let data = self.data.clone();
-
-        let guard = EngineGuard::lock(&data, component.user, &ctx.http).await?;
+        let guard = EngineGuard::lock(&self.data, component.user.id, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
         // uses this to find the error before other things
         let _ = engine
             .find_mut(&(component.message.id, component.message.channel_id).into())
-            .ok_or(anyhow::anyhow!("message not found in engine"))?;
+            .ok_or(anyhow::anyhow!("Message not found in engine"))?;
 
         let old_content = component.message.content.clone();
         component
             .message
             .edit(
-                ctx.http.clone(),
+                &ctx.http,
                 EditMessage::new().content("https://i.gifer.com/3OjRd.gif"),
             )
             .await?;
@@ -44,12 +42,12 @@ impl Handler {
 
             let content = response
                 .content()
-                .ok_or(anyhow::anyhow!("message does not have a content"))?;
+                .ok_or(anyhow::anyhow!("Message does not have a content"))?;
 
             component
                 .message
                 .edit(
-                    ctx.http.clone(),
+                    &ctx.http,
                     EditMessage::new()
                         .content(content)
                         .button(
@@ -93,7 +91,7 @@ impl Handler {
             Err(why) => {
                 component
                     .message
-                    .edit(ctx.http.clone(), EditMessage::new().content(old_content))
+                    .edit(&ctx.http, EditMessage::new().content(old_content))
                     .await?;
 
                 Err(why)

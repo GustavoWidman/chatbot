@@ -1,12 +1,12 @@
-pub struct TemplateVariables {
-    user: String,
-    bot: String,
-    time: String,
-    time_since: String,
+pub struct TemplateVariables<'a> {
+    user: &'a str,
+    bot: &'a str,
+    time: &'a str,
+    time_since: &'a str,
 }
 
-impl TemplateVariables {
-    pub fn new(user: String, bot: String, time: String, time_since: String) -> Self {
+impl<'a> TemplateVariables<'a> {
+    pub fn new(user: &'a str, bot: &'a str, time: &'a str, time_since: &'a str) -> Self {
         Self {
             user,
             bot,
@@ -17,10 +17,10 @@ impl TemplateVariables {
 
     /// Helper to substitute template placeholders in a string.
     pub fn substitute_template(&self, s: &str) -> String {
-        s.replace("{user}", &self.user)
-            .replace("{bot}", &self.bot)
-            .replace("{time}", &self.time)
-            .replace("{time_since}", &self.time_since)
+        s.replace("{user}", self.user)
+            .replace("{bot}", self.bot)
+            .replace("{time}", self.time)
+            .replace("{time_since}", self.time_since)
     }
 
     /// Helper to substitute template placeholders in a string.

@@ -1,7 +1,8 @@
 use anyhow::anyhow;
 use serenity::all::{
-    ActionRowComponent, ComponentInteraction, Context, CreateActionRow, CreateButton,
-    CreateInputText, CreateModal, EditMessage, InputTextStyle, ModalInteraction,
+    ActionRowComponent, Builder, ComponentInteraction, Context, CreateActionRow, CreateButton,
+    CreateInputText, CreateInteractionResponse, CreateModal, EditMessage, InputTextStyle,
+    ModalInteraction,
 };
 
 use crate::chat::{ChatMessage, engine::EngineGuard};
@@ -14,13 +15,11 @@ impl Handler {
         component: ComponentInteraction,
         ctx: Context,
     ) -> anyhow::Result<()> {
-        let old_content = component.message.content.clone();
-
         let modal = CreateModal::new(format!("edit_{}", component.message.id), "Edit Response")
             .components(vec![CreateActionRow::InputText(
                 CreateInputText::new(InputTextStyle::Paragraph, "Response", "response")
                     .placeholder("Edit this response here")
-                    .value(old_content)
+                    .value(&component.message.content)
                     .max_length(2000)
                     .required(true)
                     .min_length(1),
@@ -41,27 +40,36 @@ impl Handler {
         interaction: ModalInteraction,
         ctx: Context,
     ) -> anyhow::Result<()> {
-        let mut message = if let Some(message) = interaction.message.clone() {
+        let ModalInteraction {
+            id,
+            token,
+            user,
+            message,
+            data,
+            ..
+        } = interaction;
+
+        let mut message = if let Some(message) = message {
             message
         } else {
             return Err(anyhow!("could not find message reference to edit"));
         };
 
-        let content = interaction
-            .data
+        let content = data
             .components
-            .first()
-            .and_then(|row| row.components.first())
+            .into_iter()
+            .next()
+            .and_then(|row| row.components.into_iter().next())
             .and_then(|component| match component {
-                ActionRowComponent::InputText(text) => Some(text.value.clone()),
+                ActionRowComponent::InputText(text) => Some(text.value),
                 _ => None,
             })
-            .and_then(|value| value)
+            .flatten()
             .ok_or_else(|| anyhow!("could not find content to edit"))?;
 
-        let data = self.data.clone();
+        let data = &self.data;
 
-        let guard = EngineGuard::lock(&data, interaction.user.clone(), &ctx.http).await?;
+        let guard = EngineGuard::lock(&data, user.id, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
         let messages = match engine.find_mut(&(message.id, message.channel_id).into()) {
@@ -75,11 +83,11 @@ impl Handler {
             }
         };
 
-        self.disable_buttons(*message.clone(), &ctx).await?;
+        self.disable_buttons(&mut *message, &ctx).await?;
 
         message
             .edit(
-                ctx.http.clone(),
+                &ctx.http,
                 EditMessage::new()
                     .content(content.clone())
                     .button(
@@ -108,8 +116,9 @@ impl Handler {
 
         messages.push(ChatMessage::assistant(content));
 
-        // fulfill the interaction
-        interaction.defer(ctx.http.clone()).await?;
+        CreateInteractionResponse::Acknowledge
+            .execute(&ctx.http, (id, &token))
+            .await?;
 
         Ok(())
     }

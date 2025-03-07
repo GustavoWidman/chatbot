@@ -227,7 +227,7 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
 
             ctx.send(
                 CreateReply::default()
-                    .content(format!("Successfully updated the {key} to \"{value}\""))
+                    .content(format!("Successfully updated the {key} to `{value}`"))
                     .ephemeral(true),
             )
             .await?;

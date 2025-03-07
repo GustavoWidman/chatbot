@@ -1,28 +1,28 @@
 use std::sync::Arc;
 
 use rand::Rng;
-use serenity::all::{ChannelId, CreateButton, CreateMessage, Http, Message, User};
+use serenity::all::{ChannelId, CreateButton, CreateMessage, Http, Message, UserId};
 use tokio::{task::JoinHandle, time};
 
 use crate::{
     bot::handler::framework::InnerData,
     chat::engine::{ChatEngine, ContextType, EngineGuard},
+    utils::macros::config,
 };
 
 use super::super::Handler;
 
 impl Handler {
-    pub async fn freewill_dispatch(&self, user: User, channel: ChannelId, http: Arc<Http>) {
-        let data = self.data.clone();
-        let mut freewill_map = data.freewill_map.write().await;
+    pub async fn freewill_dispatch(&self, user: UserId, channel: ChannelId, http: Arc<Http>) {
+        let mut freewill_map = self.data.freewill_map.write().await;
         freewill_map
-            .entry(user.clone())
+            .entry(user)
             .and_modify(|handle| {
                 if handle.is_finished() {
                     log::info!("freewill was finished, dispatching again");
                     *handle = Self::freewill_spawn(
-                        data.clone(),
-                        user.clone(),
+                        self.data.clone(),
+                        user,
                         channel.clone(),
                         http.clone(),
                     );
@@ -34,15 +34,13 @@ impl Handler {
             .or_insert_with(|| {
                 log::info!("freewill is not running, dispatching");
 
-                let data = self.data.clone();
-
-                Self::freewill_spawn(data, user.clone(), channel.clone(), http.clone())
+                Self::freewill_spawn(self.data.clone(), user, channel, http)
             });
     }
 
     pub fn freewill_spawn(
         data: Arc<InnerData>,
-        user: User,
+        user: UserId,
         channel: ChannelId,
         http: Arc<Http>,
     ) -> JoinHandle<()> {
@@ -55,14 +53,9 @@ impl Handler {
 
                     tokio::time::sleep(interval).await;
 
-                    if Self::should_freewill(data.clone(), user.clone(), &http).await {
-                        let did_freewill = Self::freewill(
-                            data.clone(),
-                            user.clone(),
-                            channel.clone(),
-                            http.clone(),
-                        )
-                        .await;
+                    if Self::should_freewill(data.clone(), user, &http).await {
+                        let did_freewill =
+                            Self::freewill(data.clone(), user, channel.clone(), http.clone()).await;
                         log::info!("freewill done");
                         if did_freewill {
                             return;
@@ -77,12 +70,12 @@ impl Handler {
 
     pub async fn freewill(
         data: Arc<InnerData>,
-        user: User,
+        user: UserId,
         channel: ChannelId,
         http: Arc<Http>,
     ) -> bool {
         log::debug!("attempting to freewill");
-        let guard = if let Ok(engine) = EngineGuard::lock(&data, user.clone(), &http).await {
+        let guard = if let Ok(engine) = EngineGuard::lock(&data, user, &http).await {
             engine
         } else {
             return false;
@@ -128,7 +121,7 @@ impl Handler {
                         .disabled(false),
                 );
 
-            let msg = channel.send_message(http.clone(), message.clone()).await?;
+            let msg = channel.send_message(http, message).await?;
 
             // only change context after we're sure everything is okay
             engine.add_message(response, (msg.id, msg.channel_id));
@@ -146,7 +139,7 @@ impl Handler {
         }
     }
 
-    pub async fn should_freewill(data: Arc<InnerData>, user: User, http: &Http) -> bool {
+    pub async fn should_freewill(data: Arc<InnerData>, user: UserId, http: &Http) -> bool {
         let guard = if let Ok(engine) = EngineGuard::lock(&data, user, http).await {
             engine
         } else {
@@ -157,8 +150,7 @@ impl Handler {
 
         let time_since_last = engine.time_since_last().num_seconds() as f64;
 
-        data.config.write().await.update();
-        let config = data.config.read().await;
+        let config = config!(data);
         let mut rng = rand::rng();
         let threshold = exponential_probability(
             time_since_last,
@@ -177,13 +169,14 @@ impl Handler {
     pub async fn freewill_memory_store(engine: &ChatEngine) -> anyhow::Result<()> {
         log::info!("performing freewill memory store");
 
-        let user_name = engine.config.system.user_name.clone();
-        let assistant_name = engine.config.system.chatbot_name.clone();
-
         let messages = engine.take_until_freewill().await;
 
         engine
-            .summarize_and_store(messages, user_name, assistant_name)
+            .summarize_and_store(
+                messages,
+                &engine.config.system.user_name,
+                &engine.config.system.chatbot_name,
+            )
             .await
     }
 }

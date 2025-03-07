@@ -200,11 +200,8 @@ impl CompletionAgent {
                     function: ToolFunction { name, arguments },
                 } = tool_call;
 
-                let tool_result: ToolResult = (
-                    name.clone(),
-                    self.call_tool(&name, arguments.to_string()).await?,
-                )
-                    .into();
+                let result = self.call_tool(&name, arguments.to_string()).await?;
+                let tool_result: ToolResult = (name, result).into();
 
                 Ok(CompletionResult::Tool((
                     Message::Assistant {
@@ -280,12 +277,10 @@ impl CompletionAgent {
     pub async fn store(
         &self,
         context: Vec<ChatMessage>,
-        user_name: String,
-        assistant_name: String,
+        user_name: &str,
+        assistant_name: &str,
     ) -> anyhow::Result<()> {
-        let summary = self
-            .summarize(context.clone(), user_name, assistant_name)
-            .await?;
+        let summary = self.summarize(context, user_name, assistant_name).await?;
 
         log::info!("summary:\n{}", summary);
 
@@ -300,8 +295,8 @@ impl CompletionAgent {
     async fn summarize(
         &self,
         context: Vec<ChatMessage>,
-        user_name: String,
-        assistant_name: String,
+        user_name: &str,
+        assistant_name: &str,
     ) -> anyhow::Result<String> {
         let preamble = "# Summarization Assistant
 You are a specialized summarization assistant that extracts only the most significant, long-term valuable information from conversations. Your purpose is to identify and record information that should be remembered for future interactions.
@@ -362,8 +357,8 @@ Extract only information that meets ALL of these criteria:
                     Some(format!(
                         "{}: {}\n---\n",
                         match role {
-                            MessageRole::User => user_name.clone(),
-                            MessageRole::Assistant => assistant_name.clone(),
+                            MessageRole::User => user_name,
+                            MessageRole::Assistant => assistant_name,
                         },
                         content
                     ))
@@ -371,8 +366,8 @@ Extract only information that meets ALL of these criteria:
                 .collect::<Vec<String>>()
                 .join("")
                 .trim_end_matches("\n---\n")
-                .replace(&user_name, "<user>")
-                .replace(&assistant_name, "<assistant>")
+                .replace(user_name, "<user>")
+                .replace(assistant_name, "<assistant>")
                 .to_owned(),
         );
 

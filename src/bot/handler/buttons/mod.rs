@@ -12,7 +12,11 @@ mod prev;
 mod regen;
 
 impl Handler {
-    pub async fn disable_buttons(&self, mut message: Message, ctx: &Context) -> anyhow::Result<()> {
+    pub async fn disable_buttons(
+        &self,
+        message: &mut Message,
+        ctx: &Context,
+    ) -> anyhow::Result<()> {
         let buttons = CreateActionRow::Buttons(
             message
                 .components
@@ -47,10 +51,7 @@ impl Handler {
         );
 
         message
-            .edit(
-                ctx.http.clone(),
-                EditMessage::new().components(vec![buttons]),
-            )
+            .edit(&ctx.http, EditMessage::new().components(vec![buttons]))
             .await?;
 
         Ok(())

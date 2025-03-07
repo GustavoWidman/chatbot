@@ -12,6 +12,7 @@ pub struct ChatMessage {
     pub freewill: bool,
 }
 
+#[derive(PartialEq, Eq)]
 pub enum MessageRole {
     User,
     Assistant,

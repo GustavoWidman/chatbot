@@ -281,15 +281,14 @@ impl ChatContext {
         self.messages.last().map(|(_, m)| m)
     }
 
-    // #[allow(unused)]
     /// Returns the latest message with the given role.
-    // pub fn latest_with_role(&self, user: String) -> Option<&Messages<ChatMessage>> {
-    //     self.messages
-    //         .iter()
-    //         .rev()
-    //         .find(|(_, m)| m.selected().role == user)
-    //         .map(|(_, m)| m)
-    // }
+    pub fn latest_with_role(&self, role: MessageRole) -> Option<&Messages<ChatMessage>> {
+        self.messages
+            .iter()
+            .rev()
+            .find(|(_, m)| m.selected().role() == role)
+            .map(|(_, m)| m)
+    }
 
     #[allow(unused)]
     /// Returns the message with the given id (not index, if you want the index use [ChatContext::get])
@@ -345,15 +344,19 @@ impl ChatContext {
     async fn get_messages(&self) -> Vec<ChatMessage> {
         self.messages
             .iter()
-            .map(|(_, messages)| messages.selected().clone())
+            .map(|(_, messages)| messages.selected())
+            .cloned()
             .collect::<Vec<_>>()
     }
 
     pub async fn take_until_freewill(&self) -> Vec<ChatMessage> {
         self.messages
             .iter()
-            .take_while(|(_, messages)| !messages.selected().freewill)
-            .map(|(_, messages)| messages.selected().clone())
+            .map_while(|(_, messages)| {
+                let selected = messages.selected();
+                selected.freewill.then_some(selected)
+            })
+            .cloned()
             .collect::<Vec<_>>()
     }
 
@@ -415,7 +418,8 @@ impl ChatContext {
             .get_range(0..index)
             .ok_or(anyhow!("context not found"))?
             .iter()
-            .map(|(_, messages)| messages.selected().clone())
+            .map(|(_, messages)| messages.selected())
+            .cloned()
             .collect::<Vec<_>>();
 
         // Extract the last text message from the user as the prompt

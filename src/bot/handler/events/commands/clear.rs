@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use crate::bot::handler::events::HandlerResult;
 use crate::bot::handler::framework::Context;
 use crate::chat;
+use crate::utils::macros::config;
 
 /// Clears the current context window and reloads the engine
 pub async fn clear(ctx: Context<'_>) -> HandlerResult<()> {
@@ -14,19 +15,20 @@ pub async fn clear(ctx: Context<'_>) -> HandlerResult<()> {
 
     let result: anyhow::Result<()> = async {
         let new_engine = {
-            data.config.write().await.update();
-            let config = data.config.read().await.clone();
+            let config = config!(data);
             let mut new_engine =
                 chat::engine::ChatEngine::new(config, ctx.author().id, ctx.http()).await?;
             new_engine.clear_context();
             RwLock::new(new_engine)
         };
 
-        user_map.remove(ctx.author());
-        user_map.insert(ctx.author().clone(), new_engine);
+        let author = ctx.author();
+
+        user_map.remove(&author.id);
+        user_map.insert(author.id, new_engine);
 
         let mut freewill_map = data.freewill_map.write().await;
-        if let Some(handle) = freewill_map.remove(ctx.author()) {
+        if let Some(handle) = freewill_map.remove(&author.id) {
             handle.abort();
         }
 

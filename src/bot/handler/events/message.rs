@@ -10,15 +10,13 @@ impl Handler {
             return HandlerResult::ok(());
         }
 
-        let data = self.data.clone();
-
-        self.freewill_dispatch(msg.author.clone(), msg.channel_id, ctx.http.clone())
+        self.freewill_dispatch(msg.author.id, msg.channel_id, ctx.http.clone())
             .await;
 
         let typing = ctx.http.start_typing(msg.channel_id);
 
         let result: anyhow::Result<Message> = async {
-            let guard = EngineGuard::lock(&data, msg.author.clone(), &ctx.http).await?;
+            let guard = EngineGuard::lock(&self.data, msg.author.id, &ctx.http).await?;
             let mut engine = guard.engine().await.write().await;
 
             let response = engine
@@ -52,10 +50,7 @@ impl Handler {
                         .disabled(false),
                 );
 
-            let msg = msg
-                .channel_id
-                .send_message(ctx.http.clone(), message.clone())
-                .await?;
+            let msg = msg.channel_id.send_message(&ctx.http, message).await?;
 
             engine.add_message(response, (msg.id, msg.channel_id));
 

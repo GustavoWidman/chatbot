@@ -5,22 +5,23 @@ use tokio::sync::RwLock;
 use crate::bot::handler::events::HandlerResult;
 use crate::bot::handler::framework::Context;
 use crate::chat;
+use crate::utils::macros::config;
 
 /// Reloads the engine without clearing the context window
 pub async fn reload(ctx: Context<'_>) -> HandlerResult<()> {
-    let data = ctx.data().clone();
+    let data = ctx.data();
 
-    data.config.write().await.update();
-    let config = data.config.read().await.clone();
+    let config = config!(&data);
 
     let mut user_map = data.user_map.write().await;
 
     let result: anyhow::Result<()> = async {
-        let engine = match user_map.remove(ctx.author()) {
-            Some(engine) => chat::engine::ChatEngine::reload(engine.into_inner()).await,
+        let author = ctx.author();
+        let engine = match user_map.remove(&author.id) {
+            Some(engine) => chat::engine::ChatEngine::reload(engine.into_inner(), config).await,
             None => chat::engine::ChatEngine::new(config, ctx.author().id, ctx.http()).await,
         }?;
-        user_map.insert(ctx.author().clone(), RwLock::new(engine));
+        user_map.insert(author.id, RwLock::new(engine));
 
         ctx.send(
             CreateReply::default()

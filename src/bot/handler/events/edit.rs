@@ -32,8 +32,7 @@ impl Handler {
             return HandlerResult::ok(());
         };
 
-        let data = self.data.clone();
-        let guard = match EngineGuard::lock(&data, author, &ctx.http).await {
+        let guard = match EngineGuard::lock(&self.data, author.id, &ctx.http).await {
             Ok(guard) => guard,
             Err(why) => {
                 return HandlerResult::err(

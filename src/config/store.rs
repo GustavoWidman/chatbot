@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChatBotConfig {
     pub path: PathBuf,
     cached: ChatBotConfigTOML,
@@ -63,6 +63,10 @@ impl ChatBotConfig {
         Ok(config)
     }
 
+    pub fn into_inner(self) -> ChatBotConfigInner {
+        self.cached.config
+    }
+
     pub fn save(&self) -> Result<(), anyhow::Error> {
         std::fs::write(&self.path, toml::to_string(&self.cached)?)?;
 
@@ -87,15 +91,6 @@ impl Deref for ChatBotConfig {
 impl DerefMut for ChatBotConfig {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.cached.config
-    }
-}
-
-impl Clone for ChatBotConfig {
-    fn clone(&self) -> Self {
-        Self {
-            path: self.path.clone(),
-            cached: self.cached.clone(),
-        }
     }
 }
 

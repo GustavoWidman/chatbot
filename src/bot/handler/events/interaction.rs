@@ -25,15 +25,15 @@ impl Handler {
     }
 
     async fn on_component(&self, ctx: Context, interaction: Interaction) -> HandlerResult<()> {
-        if let Some(component) = interaction.into_message_component() {
-            let result = match component.data.custom_id.clone().as_str() {
+        if let Some(mut component) = interaction.into_message_component() {
+            let result = match component.data.custom_id.as_str() {
                 id @ ("regen" | "prev" | "next") => {
-                    if let Err(why) = self.disable_buttons(*component.message.clone(), &ctx).await {
+                    if let Err(why) = self.disable_buttons(&mut *component.message, &ctx).await {
                         log::error!("error editing message: {why:?}");
                         return HandlerResult::err(why, (ctx.http, *component.message));
                     };
 
-                    if let Err(err) = component.defer(ctx.http.clone()).await {
+                    if let Err(err) = component.defer(&ctx.http).await {
                         log::error!("error deferring component: {err:?}");
                         return HandlerResult::err(err, (ctx.http, *component.message));
                     }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use serenity::all::{Framework, User};
+use serenity::all::{Framework, UserId};
 
 use tokio::{sync::RwLock, task::JoinHandle};
 
@@ -15,8 +15,8 @@ mod reload;
 
 pub struct InnerData {
     pub config: RwLock<ChatBotConfig>,
-    pub user_map: RwLock<HashMap<User, RwLock<ChatEngine>>>,
-    pub freewill_map: RwLock<HashMap<User, JoinHandle<()>>>,
+    pub user_map: RwLock<HashMap<UserId, RwLock<ChatEngine>>>,
+    pub freewill_map: RwLock<HashMap<UserId, JoinHandle<()>>>,
     pub context: RwLock<Option<Arc<serenity::client::Context>>>,
 }
 pub type Data = Arc<InnerData>;
@@ -28,7 +28,6 @@ pub async fn framework(config: ChatBotConfig) -> (impl Framework + 'static, Data
         freewill_map: RwLock::new(HashMap::new()),
         context: RwLock::new(None),
     });
-    let clone = data.clone();
 
     (
         poise::Framework::builder()
@@ -36,14 +35,17 @@ pub async fn framework(config: ChatBotConfig) -> (impl Framework + 'static, Data
                 commands: vec![clear::clear(), reload::reload(), config::config()],
                 ..Default::default()
             })
-            .setup(move |ctx, _ready, framework| {
-                Box::pin({
-                    async move {
-                        poise::builtins::register_globally(ctx, &framework.options().commands)
-                            .await?;
-                        Ok(clone)
-                    }
-                })
+            .setup({
+                let data = data.clone();
+                move |ctx, _ready, framework| {
+                    Box::pin({
+                        async move {
+                            poise::builtins::register_globally(ctx, &framework.options().commands)
+                                .await?;
+                            Ok(data)
+                        }
+                    })
+                }
             })
             .build(),
         data,

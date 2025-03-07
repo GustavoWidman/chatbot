@@ -8,7 +8,7 @@ use rig::{
     embeddings::{Embedding, EmbeddingError, EmbeddingModel},
     message::AssistantContent,
     providers::{
-        anthropic, azure, cohere, deepseek, galadriel, gemini, groq, hyperbolic, moonshot, openai,
+        anthropic, cohere, deepseek, galadriel, gemini, groq, hyperbolic, moonshot, openai,
         perplexity, xai,
     },
 };
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone)]
 pub enum ProviderClient {
     Anthropic(anthropic::Client),
-    Azure(azure::Client),
+    // Azure(azure::Client),
     Cohere(cohere::Client),
     Deepseek(deepseek::Client),
     Galadriel(galadriel::Client),
@@ -83,7 +83,7 @@ impl ProviderClient {
     pub async fn completion_model(&self, model: &str) -> Box<dyn DynCompletionModel> {
         match self {
             ProviderClient::Anthropic(client) => Box::new(client.completion_model(model)),
-            ProviderClient::Azure(client) => Box::new(client.completion_model(model)),
+            // ProviderClient::Azure(client) => Box::new(client.completion_model(model)),
             ProviderClient::Cohere(client) => Box::new(client.completion_model(model)),
             ProviderClient::Deepseek(client) => Box::new(client.completion_model(model)),
             ProviderClient::Galadriel(client) => Box::new(client.completion_model(model)),
@@ -107,7 +107,7 @@ impl ProviderClient {
     ) -> Option<Box<dyn DynEmbeddingModel>> {
         match self {
             ProviderClient::Anthropic(_) => None,
-            ProviderClient::Azure(client) => Some(Box::new(client.embedding_model(model))),
+            // ProviderClient::Azure(client) => Some(Box::new(client.embedding_model(model))),
             ProviderClient::Cohere(client) => input_type.map(|input_type| {
                 Box::new(client.embedding_model(model, input_type)) as Box<dyn DynEmbeddingModel>
             }),
@@ -131,9 +131,9 @@ impl ProviderClient {
     ) -> Option<Box<dyn DynEmbeddingModel>> {
         match self {
             ProviderClient::Anthropic(_) => None,
-            ProviderClient::Azure(client) => {
-                Some(Box::new(client.embedding_model_with_ndims(model, ndims)))
-            }
+            // ProviderClient::Azure(client) => {
+            // Some(Box::new(client.embedding_model_with_ndims(model, ndims)))
+            // }
             ProviderClient::Cohere(client) => input_type.map(|input_type| {
                 Box::new(client.embedding_model_with_ndims(model, input_type, ndims))
                     as Box<dyn DynEmbeddingModel>
@@ -162,9 +162,8 @@ pub enum Provider {
     #[serde(rename = "anthropic")]
     Anthropic,
 
-    #[serde(rename = "azure")]
-    Azure,
-
+    // #[serde(rename = "azure")]
+    // Azure,
     #[serde(rename = "cohere")]
     Cohere,
 
@@ -235,8 +234,7 @@ impl Provider {
             }
 
             // todo fix
-            Provider::Azure => ProviderClient::Azure(azure::Client::from_env()),
-
+            // Provider::Azure => ProviderClient::Azure(azure::Client::from_env()),
             Provider::Cohere => match custom_url {
                 None => ProviderClient::Cohere(cohere::Client::new(api_key)),
                 Some(url) => ProviderClient::Cohere(cohere::Client::from_url(api_key, url)),

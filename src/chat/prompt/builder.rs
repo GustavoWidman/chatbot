@@ -74,12 +74,8 @@ impl SystemPromptBuilder {
 
         let time_since = utils::time_to_string(time_since_last);
 
-        let variables = TemplateVariables::new(
-            self.user_name.clone(),
-            self.chatbot_name.clone(),
-            time,
-            time_since,
-        );
+        let variables =
+            TemplateVariables::new(&self.user_name, &self.chatbot_name, &time, &time_since);
 
         self.tone = variables.substitute_optional_template(self.tone.as_deref());
         self.age = variables.substitute_optional_template(self.age.as_deref());

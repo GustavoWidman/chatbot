@@ -11,9 +11,7 @@ impl Handler {
         mut component: ComponentInteraction,
         ctx: Context,
     ) -> anyhow::Result<()> {
-        let data = self.data.clone();
-
-        let guard = EngineGuard::lock(&data, component.user, &ctx.http).await?;
+        let guard = EngineGuard::lock(&self.data, component.user.id, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
         let message = engine
@@ -37,7 +35,7 @@ impl Handler {
         component
             .message
             .edit(
-                ctx.http.clone(),
+                &ctx.http,
                 EditMessage::new()
                     .content(content)
                     .button(

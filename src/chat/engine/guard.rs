@@ -1,20 +1,20 @@
-use serenity::all::{Http, User};
+use serenity::all::{Http, UserId};
 use std::collections::HashMap;
 use tokio::sync::{RwLock, RwLockReadGuard};
 
-use crate::bot::Data;
+use crate::{bot::Data, utils::macros::config};
 
 use super::ChatEngine;
 
 /// Wraps an engine reference together with its write guard.
 pub struct EngineGuard<'a> {
     // Keep the guard so the reference remains valid.
-    _guard: RwLockReadGuard<'a, HashMap<User, RwLock<ChatEngine>>>,
-    user: User,
+    _guard: RwLockReadGuard<'a, HashMap<UserId, RwLock<ChatEngine>>>,
+    user: UserId,
 }
 
 impl<'a> EngineGuard<'a> {
-    pub async fn lock(data: &'a Data, user: User, http: &Http) -> anyhow::Result<Self> {
+    pub async fn lock(data: &'a Data, user: UserId, http: &Http) -> anyhow::Result<Self> {
         let user_map = data.user_map.read().await;
         let contains = user_map.contains_key(&user);
         drop(user_map);
@@ -22,11 +22,10 @@ impl<'a> EngineGuard<'a> {
             true => (),
             false => {
                 let mut user_map = data.user_map.write().await;
-                data.config.write().await.update();
-                let config = data.config.read().await.clone();
-                let engine = ChatEngine::new(config, user.id, http).await?;
+                let config = config!(data);
+                let engine = ChatEngine::new(config, user.clone(), http).await?;
 
-                user_map.insert(user.clone(), RwLock::new(engine));
+                user_map.insert(user, RwLock::new(engine));
             }
         };
 

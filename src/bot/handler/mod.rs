@@ -151,9 +151,9 @@ impl Handler {
         if let Some(context) = context.as_ref() {
             context.set_presence(None, serenity::all::OnlineStatus::Offline);
 
-            for message in messages {
+            for mut message in messages {
                 let _ = self
-                    .disable_buttons(message, &context)
+                    .disable_buttons(&mut message, &context)
                     .await
                     .map_err(|why| {
                         log::error!("Error disabling buttons: {why:?}");

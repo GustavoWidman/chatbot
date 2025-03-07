@@ -8,26 +8,31 @@ use crate::{
         client::{CompletionAgent, CompletionResult},
         context::{ContextWindow, MessageIdentifier},
     },
-    config::store::ChatBotConfig,
+    config::{store::ChatBotConfig, structure::ChatBotConfigInner},
 };
 
 use super::super::context::{ChatContext, ChatMessage};
 
 pub struct ChatEngine {
     pub client: CompletionAgent,
-    config: ChatBotConfig,
     user_id: UserId,
     context: ChatContext,
 }
 
 impl ChatEngine {
     pub async fn new(config: ChatBotConfig, user_id: UserId, http: &Http) -> anyhow::Result<Self> {
-        let context = ChatContext::new(&config.context, user_id, http).await;
+        let ChatBotConfigInner {
+            context: context_config,
+            llm: llm_config,
+            ..
+        } = config.into_inner();
+
+        let context = ChatContext::new(&context_config, user_id, http).await;
         let client = CompletionAgent::new(
-            config.llm.clone(),
+            llm_config,
             user_id,
-            config.context.system.user_name.clone(),
-            config.context.system.chatbot_name.clone(),
+            context_config.system.user_name,
+            context_config.system.chatbot_name,
         )
         .await?;
 
@@ -35,18 +40,23 @@ impl ChatEngine {
             client,
             context,
             user_id,
-            config,
         })
     }
 
     // initializes with
-    pub async fn reload(self) -> anyhow::Result<Self> {
+    pub async fn reload(self, config: ChatBotConfig) -> anyhow::Result<Self> {
         // let client = client.unwrap_or(ChatClient::new(&config.llm, user_id))
+        let ChatBotConfigInner {
+            context: context_config,
+            llm: llm_config,
+            ..
+        } = config.into_inner();
+
         let client = CompletionAgent::new(
-            self.config.llm.clone(),
+            llm_config,
             self.user_id,
-            self.config.context.system.user_name.clone(),
-            self.config.context.system.chatbot_name.clone(),
+            context_config.system.user_name,
+            context_config.system.chatbot_name,
         )
         .await?;
 
@@ -54,7 +64,6 @@ impl ChatEngine {
             client,
             context: self.context,
             user_id: self.user_id,
-            config: self.config,
         })
     }
 
@@ -90,8 +99,8 @@ impl ChatEngine {
                 self.client
                     .store(
                         drained,
-                        self.context.config.system.user_name.clone(),
-                        self.context.config.system.chatbot_name.clone(),
+                        &self.context.config.system.user_name,
+                        &self.context.config.system.chatbot_name,
                     )
                     .await?;
             }
@@ -162,8 +171,8 @@ impl ChatEngine {
     pub async fn summarize_and_store(
         &self,
         context: Vec<ChatMessage>,
-        user_name: String,
-        assistant_name: String,
+        user_name: &str,
+        assistant_name: &str,
     ) -> anyhow::Result<()> {
         self.client.store(context, user_name, assistant_name).await
     }
