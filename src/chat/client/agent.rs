@@ -188,6 +188,12 @@ impl CompletionAgent {
                 let regex = Regex::new(r"<think>(?:.|\n)*<\/think>(?:\n*)?")?;
                 text.text = regex.replace_all(&text.text, "").to_string();
 
+                // get rid of weird artifacts
+                let regex = Regex::new(r" +\n\n")?;
+                text.text = regex.replace_all(&text.text, "\n\n").to_string();
+                let regex = Regex::new(r" {2,}")?;
+                text.text = regex.replace_all(&text.text, " ").to_string();
+
                 Ok(CompletionResult::Message(Message::Assistant {
                     content: OneOrMany::one(AssistantContent::text(&text.text)),
                 }))
