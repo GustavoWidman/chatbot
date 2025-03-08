@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.3-labs
+
 FROM rust:1-alpine AS builder
 
 RUN apk add --no-cache musl-dev sqlite-static openssl-dev openssl-libs-static pkgconf git libpq-dev
@@ -16,9 +18,13 @@ COPY ./src ./src
 # RUN echo "VARIABLE_2=$VARIABLE_2" >> .env
 # ...
 
-RUN cargo build --release
+RUN --mount=type=cache,target=/target/ \
+	--mount=type=cache,target=/usr/local/cargo/git/db \
+	--mount=type=cache,target=/usr/local/cargo/registry/ \
+	cargo build --release && \
+	cp /target/release/chatbot /app
 
 FROM scratch
-COPY --from=builder /target/release/chatbot /app
+COPY --from=builder /app /app
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 CMD ["/app"]
