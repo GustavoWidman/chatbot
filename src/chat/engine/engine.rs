@@ -138,17 +138,12 @@ impl ChatEngine {
 
                     if let Some(content) = content {
                         log::trace!("output: {content}");
-                        if content.len() > 100000 {
-                            i += 1;
-                            log::warn!("too big, retry #{i}");
-                            continue;
-                        } else {
-                            self.context.add_user_message(
-                                prompt,
-                                message_id.unwrap_or(MessageIdentifier::random()),
-                            )?;
-                            return Ok(message);
-                        }
+
+                        self.context.add_user_message(
+                            prompt,
+                            message_id.unwrap_or(MessageIdentifier::random()),
+                        )?;
+                        return Ok(message);
                     } else {
                         log::error!("no content in message");
                         continue;
