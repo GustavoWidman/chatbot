@@ -93,6 +93,8 @@ impl Handler {
 
             log::info!("freewill response:\n{:?}", response);
 
+            // todo add chunking here
+
             let message = CreateMessage::new()
                 .content(
                     response

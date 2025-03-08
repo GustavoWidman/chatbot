@@ -1,68 +1,77 @@
 use anyhow::bail;
-use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
+use serenity::all::{ComponentInteraction, Context, EditMessage};
 
-use crate::chat::engine::EngineGuard;
+use crate::{
+    chat::engine::EngineGuard,
+    utils::misc::{self, ButtonStates, RegenOrNext},
+};
 
 use super::super::Handler;
 
 impl Handler {
-    pub async fn next(
-        &self,
-        mut component: ComponentInteraction,
-        ctx: Context,
-    ) -> anyhow::Result<()> {
+    pub async fn next(&self, component: ComponentInteraction, ctx: Context) -> anyhow::Result<()> {
         let guard = EngineGuard::lock(&self.data, component.user.id, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
-        let message = engine
-            .find_mut(&(component.message.id, component.message.channel_id).into())
+        let (_, identifier, message) = engine
+            .find_full_mut(&(component.message.id, component.message.channel_id).into())
             .ok_or(anyhow::anyhow!("message not found in engine"))?;
 
         if !message.forward {
             bail!("message is already at the end of the context");
         }
 
-        let content = message
-            .forward()
-            .content()
-            .ok_or(anyhow::anyhow!("message does not have a content"))?;
+        let forward = message.forward();
 
-        let (can_go_fwd, emoji) = match message.forward {
-            true => ("next", '⏩'),
-            false => ("regen", '♻'),
+        let channel = identifier.channel();
+        let messages = identifier.messages();
+        let content = forward.content();
+        let button_states = ButtonStates {
+            prev_disabled: false, // went forward, so obviously not disabled
+            regen_or_next: match message.forward {
+                true => RegenOrNext::Next,
+                false => RegenOrNext::Regen,
+            },
         };
 
-        component
-            .message
-            .edit(
-                &ctx.http,
-                EditMessage::new()
-                    .content(content)
-                    .button(
-                        CreateButton::new("prev")
-                            .label("")
-                            .emoji('⏪')
-                            .style(serenity::all::ButtonStyle::Secondary)
-                            .disabled(false),
-                    )
-                    .button(
-                        // regen if cant go fwd, else next
-                        CreateButton::new(can_go_fwd)
-                            .label("")
-                            .emoji(emoji)
-                            .style(serenity::all::ButtonStyle::Secondary)
-                            .disabled(false),
-                    )
-                    .button(
-                        CreateButton::new("edit")
-                            .label("")
-                            .emoji('✏')
-                            .style(serenity::all::ButtonStyle::Secondary)
-                            .disabled(false),
-                    ),
-            )
-            .await?;
+        let typing = ctx.http.start_typing(channel);
 
-        Ok(())
+        let result: anyhow::Result<()> = async {
+            let content = content.ok_or(anyhow::anyhow!("Message does not have a content"))?;
+
+            misc::delete_message_batch(channel, &ctx.http, messages).await?;
+
+            let messages = misc::chunk_message(&content, button_states)?;
+
+            let ids = misc::send_message_batch(channel, &ctx.http, messages).await?;
+            let last_id = ids.last().ok_or(anyhow::anyhow!("no message ids"))?.clone();
+
+            let mut message = ctx.http.get_message(channel, last_id).await?;
+
+            engine.swap_identifiers(
+                &(component.message.id, component.message.channel_id).into(),
+                (last_id, channel, ids),
+            )?;
+
+            tokio::spawn({
+                let mut recv = self.data.msg_channel.0.subscribe();
+                async move {
+                    let _ = recv.recv().await;
+
+                    let _ = message
+                        .edit(&ctx.http, EditMessage::new().components(vec![]))
+                        .await;
+
+                    drop(recv);
+                }
+            });
+
+            Ok(())
+        }
+        .await;
+
+        typing.stop();
+
+        result
     }
 }

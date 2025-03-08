@@ -1,36 +1,31 @@
-use serenity::all::{ComponentInteraction, Context, CreateButton, EditMessage};
+use serenity::all::{ComponentInteraction, Context, EditMessage};
 
-use crate::chat::{
-    ChatMessage,
-    engine::{ContextType, EngineGuard},
+use crate::{
+    chat::{
+        ChatMessage,
+        context::MessageIdentifier,
+        engine::{ContextType, EngineGuard},
+    },
+    utils::misc::{self, ButtonStates},
 };
 
 use super::super::Handler;
 
 impl Handler {
-    pub async fn regen(
-        &self,
-        mut component: ComponentInteraction,
-        ctx: Context,
-    ) -> anyhow::Result<()> {
+    pub async fn regen(&self, component: ComponentInteraction, ctx: Context) -> anyhow::Result<()> {
         let guard = EngineGuard::lock(&self.data, component.user.id, &ctx.http).await?;
         let mut engine = guard.engine().await.write().await;
 
         // uses this to find the error before other things
-        let _ = engine
-            .find_mut(&(component.message.id, component.message.channel_id).into())
+        let (_, identifier, _) = engine
+            .find_full_mut(&(component.message.id, component.message.channel_id).into())
             .ok_or(anyhow::anyhow!("Message not found in engine"))?;
+        let channel = identifier.channel();
+        let messages = identifier.messages();
 
-        let old_content = component.message.content.clone();
-        component
-            .message
-            .edit(
-                &ctx.http,
-                EditMessage::new().content("https://i.gifer.com/3OjRd.gif"),
-            )
-            .await?;
+        let typing = ctx.http.start_typing(channel);
 
-        let out: anyhow::Result<ChatMessage> = async {
+        let out: anyhow::Result<(ChatMessage, MessageIdentifier)> = async {
             let response = engine
                 .user_prompt(
                     None,
@@ -44,58 +39,61 @@ impl Handler {
                 .content()
                 .ok_or(anyhow::anyhow!("Message does not have a content"))?;
 
-            component
-                .message
-                .edit(
-                    &ctx.http,
-                    EditMessage::new()
-                        .content(content)
-                        .button(
-                            CreateButton::new("prev")
-                                .label("")
-                                .emoji('⏪')
-                                .style(serenity::all::ButtonStyle::Secondary)
-                                .disabled(false),
-                        )
-                        .button(
-                            CreateButton::new("regen")
-                                .label("")
-                                .emoji('♻')
-                                .style(serenity::all::ButtonStyle::Secondary)
-                                .disabled(false),
-                        )
-                        .button(
-                            CreateButton::new("edit")
-                                .label("")
-                                .emoji('✏')
-                                .style(serenity::all::ButtonStyle::Secondary)
-                                .disabled(false),
-                        ),
-                )
-                .await?;
+            misc::delete_message_batch(channel, &ctx.http, messages).await?;
 
-            Ok(response)
+            let messages = misc::chunk_message(
+                &content,
+                ButtonStates {
+                    prev_disabled: false,
+                    regen_or_next: misc::RegenOrNext::Regen,
+                },
+            )?;
+
+            let ids = misc::send_message_batch(channel, &ctx.http, messages).await?;
+            let last_id = ids.last().ok_or(anyhow::anyhow!("no message ids"))?.clone();
+
+            Ok((response, (last_id, channel, ids).into()))
         }
         .await;
 
+        typing.stop();
+
         match out {
-            Ok(out) => {
-                let message = engine
-                    .find_mut(&(component.message.id, component.message.channel_id).into())
+            Ok((message, new_identifier)) => {
+                let identifier = (component.message.id, component.message.channel_id).into();
+                let messages = engine
+                    .find_mut(&identifier)
                     .ok_or(anyhow::anyhow!("message not found in engine"))?;
 
-                message.push(out); // pushes and selects
+                messages.push(message); // pushes and selects
 
-                Ok(())
-            }
-            Err(why) => {
-                component
-                    .message
-                    .edit(&ctx.http, EditMessage::new().content(old_content))
-                    .await?;
+                let message = ctx
+                    .http
+                    .get_message(new_identifier.channel(), new_identifier.message())
+                    .await;
 
-                Err(why)
+                engine.swap_identifiers(&identifier, new_identifier)?;
+
+                if let Ok(mut message) = message {
+                    tokio::spawn({
+                        let mut recv = self.data.msg_channel.0.subscribe();
+                        async move {
+                            let _ = recv.recv().await;
+
+                            let _ = message
+                                .edit(&ctx.http, EditMessage::new().components(vec![]))
+                                .await;
+
+                            drop(recv);
+                        }
+                    });
+
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("could not fetch discord message"))
+                }
             }
+            Err(why) => Err(why),
         }
     }
 }

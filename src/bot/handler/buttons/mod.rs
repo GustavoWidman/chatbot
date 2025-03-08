@@ -57,6 +57,7 @@ impl Handler {
         Ok(())
     }
 
+    #[allow(unused)]
     pub async fn enable_buttons(
         mut message: Message,
         http: &Http,

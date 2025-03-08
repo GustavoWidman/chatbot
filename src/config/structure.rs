@@ -20,7 +20,6 @@ pub struct ChatBotConfigInner {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct ContextConfig {
     pub max_stm: usize,
-    pub disable_buttons: Option<bool>,
     pub save_to_disk_folder: Option<PathBuf>,
     pub system: SystemPromptBuilder,
 }

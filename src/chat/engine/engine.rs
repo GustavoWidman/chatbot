@@ -138,7 +138,7 @@ impl ChatEngine {
 
                     if let Some(content) = content {
                         log::trace!("output: {content}");
-                        if content.len() > 2000 {
+                        if content.len() > 100000 {
                             i += 1;
                             log::warn!("too big, retry #{i}");
                             continue;
@@ -177,7 +177,7 @@ impl ChatEngine {
         self.client.store(context, user_name, assistant_name).await
     }
 
-    pub async fn shutdown(&self) -> anyhow::Result<Vec<MessageIdentifier>> {
+    pub async fn shutdown(&self) -> anyhow::Result<()> {
         self.context.shutdown().await
     }
 

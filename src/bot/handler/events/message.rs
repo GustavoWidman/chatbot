@@ -1,13 +1,19 @@
-use serenity::all::{Context, CreateButton, CreateMessage, Message};
+use serenity::all::{ChannelId, Context, EditMessage, Message, MessageId};
 
-use crate::chat::engine::{ContextType, EngineGuard};
+use crate::{
+    chat::engine::{ContextType, EngineGuard},
+    utils::misc::ButtonStates,
+};
 
 use super::{super::Handler, error::HandlerResult};
+use crate::utils::misc;
 
 impl Handler {
     pub async fn on_message(&self, ctx: Context, msg: Message) -> HandlerResult<()> {
         if msg.author.bot {
             return HandlerResult::ok(());
+        } else {
+            self.data.msg_channel.0.send(msg.content.clone()).unwrap();
         }
 
         self.freewill_dispatch(msg.author.id, msg.channel_id, ctx.http.clone())
@@ -15,7 +21,7 @@ impl Handler {
 
         let typing = ctx.http.start_typing(msg.channel_id);
 
-        let result: anyhow::Result<Message> = async {
+        let result: anyhow::Result<(MessageId, ChannelId)> = async {
             let guard = EngineGuard::lock(&self.data, msg.author.id, &ctx.http).await?;
             let mut engine = guard.engine().await.write().await;
 
@@ -26,42 +32,53 @@ impl Handler {
                 )
                 .await?;
 
-            let message = CreateMessage::new()
-                // unwrap is safe because user_prompt guarantees a content
-                .content(response.content().unwrap())
-                .button(
-                    CreateButton::new("prev")
-                        .label("")
-                        .emoji('⏪')
-                        .style(serenity::all::ButtonStyle::Secondary)
-                        .disabled(true),
-                )
-                .button(
-                    CreateButton::new("regen")
-                        .label("")
-                        .emoji('♻')
-                        .style(serenity::all::ButtonStyle::Secondary),
-                )
-                .button(
-                    CreateButton::new("edit")
-                        .label("")
-                        .emoji('✏')
-                        .style(serenity::all::ButtonStyle::Secondary)
-                        .disabled(false),
-                );
+            let messages = misc::chunk_message(
+                &response
+                    .content()
+                    .ok_or(anyhow::anyhow!("message does not have a content"))?,
+                ButtonStates {
+                    prev_disabled: true,
+                    regen_or_next: misc::RegenOrNext::Regen,
+                },
+            )?;
 
-            let msg = msg.channel_id.send_message(&ctx.http, message).await?;
+            let ids = misc::send_message_batch(msg.channel_id, &ctx.http, messages).await?;
+            let last_id = ids.last().ok_or(anyhow::anyhow!("no message ids"))?.clone();
 
-            engine.add_message(response, (msg.id, msg.channel_id));
+            engine.add_message(response, (last_id, msg.channel_id, ids));
 
-            Ok(msg)
+            Ok((last_id, msg.channel_id))
         }
         .await;
 
         typing.stop();
 
         match result {
-            Ok(_) => HandlerResult::ok(()),
+            Ok((msg_id, chan_id)) => {
+                let message = ctx.http.get_message(chan_id, msg_id).await;
+
+                if let Ok(mut message) = message {
+                    let mut recv = self.data.msg_channel.0.subscribe();
+                    tokio::spawn({
+                        async move {
+                            let _ = recv.recv().await;
+
+                            let _ = message
+                                .edit(&ctx.http, EditMessage::new().components(vec![]))
+                                .await;
+
+                            drop(recv);
+                        }
+                    });
+
+                    HandlerResult::ok(())
+                } else {
+                    HandlerResult::err(
+                        anyhow::anyhow!("could not fetch discord message"),
+                        (ctx.http, msg),
+                    )
+                }
+            }
             Err(why) => HandlerResult::err(why, (ctx.http, msg)),
         }
     }

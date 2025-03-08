@@ -1,23 +1,39 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, hash::Hash, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use branch_context::{Message, Messages};
-use futures::StreamExt;
 use indexmap::IndexMap;
 use rig::message::{Message as RigMessage, UserContent};
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Http, Message as SerenityMessage, MessageId, UserId};
 
-use crate::{bot::handler::Handler, config::structure::ContextConfig, utils};
+use crate::{config::structure::ContextConfig, utils};
 
 use super::{MessageRole, message::ChatMessage};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageIdentifier {
     pub message_id: u64,
     pub channel_id: u64,
     pub random: bool,
+    pub message_ids: Vec<u64>,
 }
+impl PartialEq for MessageIdentifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.message_id == other.message_id
+            && self.channel_id == other.channel_id
+            && self.random == other.random
+    }
+}
+impl Eq for MessageIdentifier {}
+impl Hash for MessageIdentifier {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.message_id.hash(state);
+        self.channel_id.hash(state);
+        self.random.hash(state);
+    }
+}
+
 impl From<Option<(MessageId, ChannelId)>> for MessageIdentifier {
     fn from(value: Option<(MessageId, ChannelId)>) -> Self {
         match value {
@@ -25,6 +41,7 @@ impl From<Option<(MessageId, ChannelId)>> for MessageIdentifier {
                 message_id: message_id.get(),
                 channel_id: channel_id.get(),
                 random: false,
+                message_ids: vec![message_id.get()],
             },
             None => Self::random(),
         }
@@ -36,15 +53,28 @@ impl From<(MessageId, ChannelId)> for MessageIdentifier {
             message_id: value.0.get(),
             channel_id: value.1.get(),
             random: false,
+            message_ids: vec![value.0.get()],
+        }
+    }
+}
+impl From<(MessageId, ChannelId, Vec<MessageId>)> for MessageIdentifier {
+    fn from(value: (MessageId, ChannelId, Vec<MessageId>)) -> Self {
+        Self {
+            message_id: value.0.get(),
+            channel_id: value.1.get(),
+            random: false,
+            message_ids: value.2.into_iter().map(|id| id.get()).collect(),
         }
     }
 }
 impl MessageIdentifier {
     pub fn random() -> Self {
+        let message_id = rand::random();
         Self {
-            message_id: rand::random(),
+            message_id,
             channel_id: rand::random(),
             random: true,
+            message_ids: vec![message_id],
         }
     }
 
@@ -60,6 +90,21 @@ impl MessageIdentifier {
                 log::error!("failed to get message: {why:?}");
             })
             .ok()
+    }
+
+    pub fn channel(&self) -> ChannelId {
+        ChannelId::new(self.channel_id)
+    }
+
+    pub fn message(&self) -> MessageId {
+        MessageId::new(self.message_id)
+    }
+
+    pub fn messages(&self) -> Vec<MessageId> {
+        self.message_ids
+            .iter()
+            .map(|id| MessageId::new(*id))
+            .collect::<Vec<_>>()
     }
 }
 
@@ -113,7 +158,7 @@ pub struct ContextWindow {
 }
 
 impl ChatContext {
-    pub async fn new(config: &ContextConfig, user_id: UserId, http: &Http) -> Self {
+    pub async fn new(config: &ContextConfig, user_id: UserId, _http: &Http) -> Self {
         log::info!("creating new context");
 
         let save_path = &config
@@ -160,48 +205,34 @@ impl ChatContext {
                                 user_id
                             );
 
-                            if config.disable_buttons.unwrap_or(false) {
-                                // reenable buttons
-                                // todo group by channel_id and use get_messages instead of
-                                // a single get_message call for each one (helps with rate-limiting)
-                                let discord_messages = futures::stream::iter(&messages)
-                                    .filter(|(id, message)| {
-                                        futures::future::ready(
-                                            (matches!(
-                                                message.selected().role(),
-                                                MessageRole::Assistant
-                                            ) && !id.random),
-                                        )
-                                    })
-                                    .then(async |(id, message)| {
-                                        (id.to_message(&http).await, message)
-                                    })
-                                    .filter_map(|(message, messages)| {
-                                        futures::future::ready(message.map(|m| (m, messages)))
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .await;
-
-                                for (message, messages) in discord_messages {
-                                    Handler::enable_buttons(
-                                        message,
-                                        http,
-                                        messages.forward,
-                                        messages.backward,
-                                    )
-                                    .await
-                                    .map_err(|why| {
-                                        log::error!("failed to enable buttons: {why:?}");
-                                        why
-                                    })?;
-                                }
-                            }
-
-                            Ok(Self {
+                            // get latest message and reenable buttons
+                            let context = Self {
                                 messages,
                                 save_path: save_path.clone(),
                                 config: config.clone(),
-                            })
+                            };
+
+                            // let latest = context.latest_with_role_full(MessageRole::Assistant);
+
+                            // if let Some((id, message)) = latest {
+                            //     let discord_message = id.to_message(&http).await;
+
+                            //     if let Some(discord_message) = discord_message {
+                            //         Handler::enable_buttons(
+                            //             discord_message,
+                            //             http,
+                            //             message.forward,
+                            //             message.backward,
+                            //         )
+                            //         .await
+                            //         .map_err(|why| {
+                            //             log::error!("failed to enable buttons: {why:?}");
+                            //             why
+                            //         })?;
+                            //     }
+                            // }
+
+                            Ok(context)
                         },
                     )
             }
@@ -222,7 +253,7 @@ impl ChatContext {
         }
     }
 
-    pub async fn shutdown(&self) -> anyhow::Result<Vec<MessageIdentifier>> {
+    pub async fn shutdown(&self) -> anyhow::Result<()> {
         if let Some(path) = &self.save_path {
             log::info!(
                 "Saving context with {} messages to {}",
@@ -235,20 +266,7 @@ impl ChatContext {
             ciborium::into_writer(&self.messages, file)?;
         }
 
-        // return the message ids in the index map
-        if self.config.disable_buttons.unwrap_or(false) {
-            Ok(self
-                .messages
-                .iter()
-                .filter(|(_, message)| matches!(message.selected().role(), MessageRole::Assistant))
-                .map(|(id, _)| id)
-                .cloned()
-                .collect())
-        } else {
-            // todo: this is a cheap hack to make sure no buttons are disabled,
-            // there might be some consequences to this laziness
-            Ok(vec![])
-        }
+        Ok(())
     }
 
     pub fn clear(&mut self) {
@@ -283,11 +301,16 @@ impl ChatContext {
 
     /// Returns the latest message with the given role.
     pub fn latest_with_role(&self, role: MessageRole) -> Option<&Messages<ChatMessage>> {
+        self.latest_with_role_full(role).map(|(_, m)| m)
+    }
+    pub fn latest_with_role_full(
+        &self,
+        role: MessageRole,
+    ) -> Option<(&MessageIdentifier, &Messages<ChatMessage>)> {
         self.messages
             .iter()
             .rev()
             .find(|(_, m)| m.selected().role() == role)
-            .map(|(_, m)| m)
     }
 
     #[allow(unused)]
@@ -323,6 +346,31 @@ impl ChatContext {
         id: &MessageIdentifier,
     ) -> Option<(usize, &MessageIdentifier, &mut Messages<ChatMessage>)> {
         self.messages.get_full_mut(id)
+    }
+
+    pub fn swap_identifiers(
+        &mut self,
+        old_id: &MessageIdentifier,
+        new_id: impl Into<MessageIdentifier>,
+    ) -> anyhow::Result<()> {
+        let old_messages = self
+            .messages
+            .get(old_id)
+            .ok_or(anyhow::anyhow!("message not found in engine"))?
+            .clone();
+
+        // insert the new identifier
+        // clone is necessary, unfortunately
+        if self.messages.insert(new_id.into(), old_messages).is_some() {
+            anyhow::bail!("identifier already exists");
+        }
+
+        // remove the old identifier
+        if self.messages.swap_remove(old_id).is_none() {
+            anyhow::bail!("identifier not found");
+        };
+
+        Ok(())
     }
 
     /// If STM is full, drain until STM is 80% of max_stm

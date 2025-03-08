@@ -2,7 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use serenity::all::{Framework, UserId};
 
-use tokio::{sync::RwLock, task::JoinHandle};
+use tokio::{
+    sync::{
+        RwLock,
+        broadcast::{Receiver, Sender},
+    },
+    task::JoinHandle,
+};
 
 use crate::{chat::engine::ChatEngine, config::store::ChatBotConfig};
 
@@ -18,6 +24,7 @@ pub struct InnerData {
     pub user_map: RwLock<HashMap<UserId, RwLock<ChatEngine>>>,
     pub freewill_map: RwLock<HashMap<UserId, JoinHandle<()>>>,
     pub context: RwLock<Option<Arc<serenity::client::Context>>>,
+    pub msg_channel: (Sender<String>, Receiver<String>),
 }
 pub type Data = Arc<InnerData>;
 
@@ -26,6 +33,7 @@ pub async fn framework(config: ChatBotConfig) -> (impl Framework + 'static, Data
         config: RwLock::new(config),
         user_map: RwLock::new(HashMap::new()),
         freewill_map: RwLock::new(HashMap::new()),
+        msg_channel: tokio::sync::broadcast::channel(100),
         context: RwLock::new(None),
     });
 

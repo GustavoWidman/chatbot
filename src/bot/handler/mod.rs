@@ -1,16 +1,20 @@
 use std::{
     process::exit,
     sync::{Arc, mpsc},
+    time::Duration,
 };
 
 use events::HandlerResult;
 pub use framework::Data;
 use serenity::{
-    all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
+    all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready, UserId},
     async_trait,
 };
 use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+
+use crate::{chat::engine::ChatEngine, utils::macros::config};
 
 mod buttons;
 mod events;
@@ -101,6 +105,44 @@ impl EventHandler for Handler {
         //         ),
         //     ));
 
+        // list contents of directory of saves
+        let config = config!(self.data);
+
+        let result: anyhow::Result<()> = async {
+            if let Some(path) = &config.context.save_to_disk_folder {
+                // walk the directory for files matching the pattern "context-*.bin" and extract the
+                // id from the filename
+                let files = std::fs::read_dir(path)?;
+                let regex = regex::Regex::new(r"^context-(\d+)\.bin$")?;
+                for file in files {
+                    let file = file?;
+                    let filename = file.file_name();
+                    if let Some(captures) = regex.captures(&filename.to_string_lossy()) {
+                        let id = captures
+                            .get(1)
+                            .ok_or(anyhow::anyhow!("no id found"))?
+                            .as_str()
+                            .parse::<u64>()?;
+                        log::info!("found saved context with id {id}");
+
+                        let mut user_map = self.data.user_map.write().await;
+                        let user = UserId::new(id);
+                        let engine =
+                            ChatEngine::new(config.clone(), user.clone(), &ctx.http).await?;
+
+                        user_map.insert(user, RwLock::new(engine));
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        .await;
+
+        if let Err(why) = result {
+            log::error!("failed to load saved contexts: {why:?}");
+        }
+
         self.data.context.write().await.replace(Arc::new(ctx));
     }
 
@@ -135,28 +177,27 @@ impl Handler {
         let user_map = self.data.user_map.write().await;
         let context = self.data.context.write().await;
 
-        let mut messages = Vec::new();
-        for (_, engine) in user_map.iter() {
-            for message_identifier in engine.write().await.shutdown().await? {
-                if let Some(context) = context.as_ref() {
-                    if let Some(message) = message_identifier.to_message(&context.http).await {
-                        messages.push(message);
-                    }
-                }
+        self.data.msg_channel.0.send("shutdown".to_string())?;
+
+        // loop for max of 5 seconds until receiver count is 0 (50*100ms = 5000ms)
+        for _ in 0..50 {
+            let count = self.data.msg_channel.0.receiver_count();
+
+            log::trace!("receiver count: {count}");
+
+            if count == 1 {
+                break;
             }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        for (_, engine) in user_map.iter() {
+            engine.write().await.shutdown().await?
         }
 
         if let Some(context) = context.as_ref() {
             context.set_presence(None, serenity::all::OnlineStatus::Offline);
-
-            for mut message in messages {
-                let _ = self
-                    .disable_buttons(&mut message, &context)
-                    .await
-                    .map_err(|why| {
-                        log::error!("Error disabling buttons: {why:?}");
-                    });
-            }
 
             context.shard.shutdown_clean();
         }
