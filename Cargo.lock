@@ -1389,12 +1389,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indoc"
-version = "2.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4c7245a08504955605670dbf141fceab975f15ca21570696aebe9d2e71576bd"
-
-[[package]]
 name = "ipnet"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2125,8 +2119,9 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.9.0"
-source = "git+https://github.com/GustavoWidman/rig#854c43c0d8d5fa0e9199ffa9d53ee778defc92ea"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82c1248f530e59a6bf1a886952a45a353f13f1602c7000d3728a48e7919a6754"
 dependencies = [
  "async-stream",
  "bytes",
@@ -2134,23 +2129,11 @@ dependencies = [
  "glob",
  "ordered-float",
  "reqwest 0.11.27",
- "rig-derive",
  "schemars",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
-]
-
-[[package]]
-name = "rig-derive"
-version = "0.1.0"
-source = "git+https://github.com/GustavoWidman/rig#854c43c0d8d5fa0e9199ffa9d53ee778defc92ea"
-dependencies = [
- "indoc",
- "proc-macro2",
- "quote",
- "syn 2.0.99",
 ]
 
 [[package]]

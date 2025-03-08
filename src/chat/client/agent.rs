@@ -387,7 +387,7 @@ Extract only information that meets ALL of these criteria:
             additional_params: None,
             chat_history: vec![],
             documents: vec![],
-            max_tokens: None,
+            max_tokens: Some(8192),
             preamble: Some(preamble),
             temperature: Some(0.2),
             tools: vec![],

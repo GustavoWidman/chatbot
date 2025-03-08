@@ -27,9 +27,6 @@ impl Handler {
             let handler = handler.clone();
             let shutdown_rx = setup_ctrlc_handler();
             async move {
-                // signal::ctrl_c()
-                //     .await
-                //     .expect("failed to install CTRL+C signal handler");
                 shutdown_rx
                     .recv()
                     .expect("Failed to receive shutdown signal");
@@ -83,28 +80,29 @@ impl EventHandler for Handler {
 
         ctx.set_presence(None, serenity::all::OnlineStatus::Online);
 
+        // TODO mobile status
+        // ctx.shard
+        //     .send_to_shard(serenity::all::ShardRunnerMessage::Message(
+        //         tungstenite::Message::Text(
+        //             serde_json::to_string(&serde_json::json!({
+        //                 "op": 3,  // Status Update opcode
+        //                 "d": {
+        //                     "since": null,
+        //                     "activities": [],
+        //                     "status": "online",
+        //                     "afk": false,
+        //                     "client_info": {
+        //                         "$os": "android",  // Try setting mobile OS flag
+        //                         "$browser": "Discord Android"
+        //                     }
+        //                 }
+        //             }))
+        //             .unwrap(),
+        //         ),
+        //     ));
+
         self.data.context.write().await.replace(Arc::new(ctx));
     }
-
-    // async fn typing_start(&self, ctx: Context, event: TypingStartEvent) {
-    //     let is_dm = event.guild_id.is_none();
-    //
-    //     if is_dm {
-    //         // someone is typing in MY dms
-    //         log::info!("User {} is typing in DMs", event.user_id);
-    //         log::info!("Channel ID: {:?}", event.channel_id);
-    //
-    //         let typing = ctx.http.start_typing(event.channel_id);
-    //
-    //         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-    //
-    //         if let Err(why) = event.channel_id.say(&ctx.http, "hey... you up too?").await {
-    //             log::info!("Error sending message: {why:?}");
-    //         }
-    //
-    //         typing.stop();
-    //     }
-    // }
 
     async fn message(&self, ctx: Context, msg: Message) {
         if let HandlerResult::Err(error) = self.on_message(ctx, msg).await {
