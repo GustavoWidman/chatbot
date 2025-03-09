@@ -358,7 +358,18 @@ Extract only information that meets ALL of these criteria:
             context
                 .into_iter()
                 .filter_map(|msg| {
-                    let content = msg.content()?;
+                    let content = msg.content().map(|content| {
+                        serde_json::from_str::<serde_json::Value>(&content)
+                            .ok()
+                            .and_then(|json| {
+                                json.get("content")
+                                    .and_then(|c| c.as_str())
+                                    .or_else(|| json.get("system_note").and_then(|n| n.as_str()))
+                                    .map(String::from)
+                            })
+                            .unwrap_or(content)
+                    })?;
+
                     let role = msg.role();
                     Some(format!(
                         "{}: {}\n---\n",
