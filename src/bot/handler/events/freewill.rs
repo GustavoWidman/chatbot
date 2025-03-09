@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
 use rand::Rng;
-use serenity::all::{ChannelId, CreateButton, CreateMessage, Http, Message, UserId};
+use serenity::all::{ChannelId, EditMessage, Http, MessageId, UserId};
 use tokio::{task::JoinHandle, time};
 
 use crate::{
     bot::handler::framework::InnerData,
     chat::engine::{ChatEngine, ContextType, EngineGuard},
-    utils::macros::config,
+    utils::{
+        macros::config,
+        misc::{self, ButtonStates},
+    },
 };
 
 use super::super::Handler;
@@ -83,7 +86,7 @@ impl Handler {
 
         let mut engine = guard.engine().await.write().await;
 
-        let out: anyhow::Result<Message> = async {
+        let out: anyhow::Result<MessageId> = async {
             Self::freewill_memory_store(&engine).await?;
 
             let mut response = engine
@@ -95,45 +98,49 @@ impl Handler {
 
             // todo add chunking here
 
-            let message = CreateMessage::new()
-                .content(
-                    response
-                        .content()
-                        .ok_or(anyhow::anyhow!("message does not have a content"))?,
-                )
-                .button(
-                    CreateButton::new("prev")
-                        .label("")
-                        .emoji('⏪')
-                        .style(serenity::all::ButtonStyle::Secondary)
-                        .disabled(true),
-                )
-                .button(
-                    CreateButton::new("regen")
-                        .label("")
-                        .emoji('♻')
-                        .style(serenity::all::ButtonStyle::Secondary)
-                        .disabled(false),
-                )
-                .button(
-                    CreateButton::new("edit")
-                        .label("")
-                        .emoji('✏')
-                        .style(serenity::all::ButtonStyle::Secondary)
-                        .disabled(false),
-                );
+            let messages = misc::chunk_message(
+                &response
+                    .content()
+                    .ok_or(anyhow::anyhow!("message does not have a content"))?,
+                ButtonStates {
+                    prev_disabled: true,
+                    regen_or_next: misc::RegenOrNext::Regen,
+                },
+            )?;
 
-            let msg = channel.send_message(http, message).await?;
+            let ids = misc::send_message_batch(channel, &http, messages).await?;
+            let last_id = ids.last().ok_or(anyhow::anyhow!("no message ids"))?.clone();
 
-            // only change context after we're sure everything is okay
-            engine.add_message(response, (msg.id, msg.channel_id));
+            engine.add_message(response, (last_id, channel, ids));
 
-            Ok(msg)
+            Ok(last_id)
         }
         .await;
 
         match out {
-            Ok(_) => true,
+            Ok(msg_id) => {
+                let message = http.get_message(channel, msg_id).await;
+
+                if let Ok(mut message) = message {
+                    let mut recv = data.msg_channel.0.subscribe();
+                    tokio::spawn({
+                        async move {
+                            let _ = recv.recv().await;
+
+                            let _ = message
+                                .edit(&http, EditMessage::new().components(vec![]))
+                                .await;
+
+                            drop(recv);
+                        }
+                    });
+
+                    true
+                } else {
+                    log::error!("could not fetch discord message");
+                    false
+                }
+            }
             Err(why) => {
                 log::error!("Error sending message: {why:?}");
                 return false;
