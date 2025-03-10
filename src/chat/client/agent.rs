@@ -9,7 +9,7 @@ use rig::{
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolResultContent, UserContent},
     tool::{Tool, ToolDyn},
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use serenity::all::UserId;
 
 use crate::{
@@ -48,7 +48,7 @@ impl CompletionAgent {
     ) -> anyhow::Result<Self> {
         let client = config
             .provider
-            .client(&config.api_key, config.custom_url.as_deref());
+            .client(&config.api_key, config.custom_url.as_deref())?;
         let completion_model = Arc::new(client.completion_model(&config.model).await);
 
         let embedding_client = config
@@ -62,7 +62,7 @@ impl CompletionAgent {
                     config.embedding_custom_url.as_deref(),
                 )
             })
-            .unwrap_or(client);
+            .unwrap_or(Ok(client))?;
 
         let embedding_model = match config.vector_size {
             Some(vector_size) => {
@@ -162,10 +162,56 @@ impl CompletionAgent {
             vec![]
         };
 
+        if self.config.reason.unwrap_or(false) {
+            system_prompt.push_str("
+## Reasoning Protocol
+
+The user will always send you a prompt in JSON format, including the following fields:
+
+- `content`: The actual content of the message the user wants you to respond to.
+- `time_since_last_message`: The time since the last message in seconds.
+- `relevant_memories`: A list of memories that are relevant to the current conversation.
+- `system_note`: A message from the system, which may contain information about the user's request or any other relevant information.
+
+When you receive a prompt, always take time to think carefully before responding. Use <think> tags to show your reasoning process. This thinking process should:
+
+1. Analyze the user's request and identify key elements
+2. Consider any compliance requirements or restrictions mentioned in the system prompt
+3. Review any \"penalty\" adjustments that might apply
+4. Process any memory recall instructions
+5. Consider the appropriate roleplay response
+6. Plan your final response to ensure it meets all requirements
+
+For example:
+
+<think>
+- User wants me to [specific request]
+- Checking compliance requirements: [note relevant restrictions]
+- Considering penalty conditions: [note any potential penalties]
+- Reviewing memory instructions: [note any recall requirements]
+- Considering roleplay context: [note character perspective]
+- Planning response that satisfies all constraints while maintaining character
+</think>
+
+After this reasoning step, provide your in-character response. This reasoning process is mandatory for every prompt you receive, ensuring thoughtful, compliant, and in-character interactions.
+");
+        }
+
+        let mut additional_params: HashMap<String, Value> = HashMap::new();
+        if self.config.reason.unwrap_or(false) {
+            additional_params.insert("reasoning".to_string(), json!({}));
+        }
+        if let Some(top_p) = self.config.top_p {
+            additional_params.insert("top_p".to_string(), json!(top_p));
+        }
+        if let Some(repetition_penalty) = self.config.repetition_penalty {
+            additional_params.insert("repetition_penalty".to_string(), json!(repetition_penalty));
+        }
+
+        log::trace!("additional_params: {:?}", json!(additional_params));
+
         let request = CompletionRequest {
-            additional_params: Some(json!({
-                "top_p": self.config.top_p,
-            })),
+            additional_params: Some(json!(additional_params)),
             chat_history: context.into_iter().map(|x| x.into()).collect(),
             documents: vec![],
             max_tokens: self.config.max_tokens,
@@ -185,7 +231,13 @@ impl CompletionAgent {
                 }
 
                 // get rid of CoT
-                let regex = Regex::new(r"<think>(?:.|\n)*<\/think>(?:\n*)?")?;
+                let regex = Regex::new(r"<think>((?:.|\n)*?)</think>(?:\n*)?")?;
+                let matches: Vec<_> = regex.captures_iter(&text.text).collect();
+                for cap in &matches {
+                    if let Some(thought) = cap.get(1) {
+                        log::trace!("Thought process: {}", thought.as_str());
+                    }
+                }
                 text.text = regex.replace_all(&text.text, "").to_string();
 
                 // get rid of weird artifacts

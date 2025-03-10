@@ -137,13 +137,19 @@ impl ChatEngine {
                     let content = message.content();
 
                     if let Some(content) = content {
-                        log::trace!("output: {content}");
+                        log::trace!("output:\n{content}");
 
-                        self.context.add_user_message(
-                            prompt,
-                            message_id.unwrap_or(MessageIdentifier::random()),
-                        )?;
-                        return Ok(message);
+                        if content.len() > 0 {
+                            self.context.add_user_message(
+                                prompt,
+                                message_id.unwrap_or(MessageIdentifier::random()),
+                            )?;
+                            return Ok(message);
+                        } else {
+                            log::error!("no content in message");
+                            i += 1;
+                            continue;
+                        }
                     } else {
                         log::error!("no content in message");
                         continue;
