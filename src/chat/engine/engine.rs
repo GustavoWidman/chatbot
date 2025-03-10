@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use anyhow::anyhow;
-use serenity::all::{Http, UserId};
+use serenity::all::UserId;
 
 use crate::{
     chat::{
@@ -20,14 +20,14 @@ pub struct ChatEngine {
 }
 
 impl ChatEngine {
-    pub async fn new(config: ChatBotConfig, user_id: UserId, http: &Http) -> anyhow::Result<Self> {
+    pub async fn new(config: ChatBotConfig, user_id: UserId) -> anyhow::Result<Self> {
         let ChatBotConfigInner {
             context: context_config,
             llm: llm_config,
             ..
         } = config.into_inner();
 
-        let context = ChatContext::new(&context_config, user_id, http).await;
+        let context = ChatContext::new(&context_config, user_id).await;
         let client = CompletionAgent::new(
             llm_config,
             user_id,

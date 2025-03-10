@@ -70,7 +70,7 @@ impl Handler {
 
         let data = &self.data;
 
-        let guard = EngineGuard::lock(&data, user.id, &ctx.http).await?;
+        let guard = EngineGuard::lock(&data, user.id).await?;
         let mut engine = guard.engine().await.write().await;
 
         let (_, identifier, _) = match engine

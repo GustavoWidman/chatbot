@@ -32,7 +32,7 @@ impl Handler {
             return HandlerResult::ok(());
         };
 
-        let guard = match EngineGuard::lock(&self.data, author.id, &ctx.http).await {
+        let guard = match EngineGuard::lock(&self.data, author.id).await {
             Ok(guard) => guard,
             Err(why) => {
                 return HandlerResult::err(

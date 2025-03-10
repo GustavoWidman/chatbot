@@ -56,7 +56,7 @@ impl Handler {
 
                     tokio::time::sleep(interval).await;
 
-                    if Self::should_freewill(data.clone(), user, &http).await {
+                    if Self::should_freewill(data.clone(), user).await {
                         let did_freewill =
                             Self::freewill(data.clone(), user, channel.clone(), http.clone()).await;
                         log::info!("freewill done");
@@ -78,7 +78,7 @@ impl Handler {
         http: Arc<Http>,
     ) -> bool {
         log::debug!("attempting to freewill");
-        let guard = if let Ok(engine) = EngineGuard::lock(&data, user, &http).await {
+        let guard = if let Ok(engine) = EngineGuard::lock(&data, user).await {
             engine
         } else {
             return false;
@@ -148,8 +148,8 @@ impl Handler {
         }
     }
 
-    pub async fn should_freewill(data: Arc<InnerData>, user: UserId, http: &Http) -> bool {
-        let guard = if let Ok(engine) = EngineGuard::lock(&data, user, http).await {
+    pub async fn should_freewill(data: Arc<InnerData>, user: UserId) -> bool {
+        let guard = if let Ok(engine) = EngineGuard::lock(&data, user).await {
             engine
         } else {
             return false;

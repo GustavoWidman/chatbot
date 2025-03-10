@@ -127,8 +127,7 @@ impl EventHandler for Handler {
 
                         let mut user_map = self.data.user_map.write().await;
                         let user = UserId::new(id);
-                        let engine =
-                            ChatEngine::new(config.clone(), user.clone(), &ctx.http).await?;
+                        let engine = ChatEngine::new(config.clone(), user.clone()).await?;
 
                         user_map.insert(user, RwLock::new(engine));
                     }

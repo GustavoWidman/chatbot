@@ -16,8 +16,7 @@ pub async fn clear(ctx: Context<'_>) -> HandlerResult<()> {
     let result: anyhow::Result<()> = async {
         let new_engine = {
             let config = config!(data);
-            let mut new_engine =
-                chat::engine::ChatEngine::new(config, ctx.author().id, ctx.http()).await?;
+            let mut new_engine = chat::engine::ChatEngine::new(config, ctx.author().id).await?;
             new_engine.clear_context();
             RwLock::new(new_engine)
         };

@@ -1,4 +1,4 @@
-use serenity::all::{Http, UserId};
+use serenity::all::UserId;
 use std::collections::HashMap;
 use tokio::sync::{RwLock, RwLockReadGuard};
 
@@ -14,7 +14,7 @@ pub struct EngineGuard<'a> {
 }
 
 impl<'a> EngineGuard<'a> {
-    pub async fn lock(data: &'a Data, user: UserId, http: &Http) -> anyhow::Result<Self> {
+    pub async fn lock(data: &'a Data, user: UserId) -> anyhow::Result<Self> {
         let user_map = data.user_map.read().await;
         let contains = user_map.contains_key(&user);
         drop(user_map);
@@ -23,7 +23,7 @@ impl<'a> EngineGuard<'a> {
             false => {
                 let mut user_map = data.user_map.write().await;
                 let config = config!(data);
-                let engine = ChatEngine::new(config, user.clone(), http).await?;
+                let engine = ChatEngine::new(config, user.clone()).await?;
 
                 user_map.insert(user, RwLock::new(engine));
             }

@@ -22,7 +22,7 @@ impl Handler {
         let typing = ctx.http.start_typing(msg.channel_id);
 
         let result: anyhow::Result<(MessageId, ChannelId)> = async {
-            let guard = EngineGuard::lock(&self.data, msg.author.id, &ctx.http).await?;
+            let guard = EngineGuard::lock(&self.data, msg.author.id).await?;
             let mut engine = guard.engine().await.write().await;
 
             let response = engine

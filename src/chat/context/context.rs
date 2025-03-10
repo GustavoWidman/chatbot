@@ -158,7 +158,7 @@ pub struct ContextWindow {
 }
 
 impl ChatContext {
-    pub async fn new(config: &ContextConfig, user_id: UserId, _http: &Http) -> Self {
+    pub async fn new(config: &ContextConfig, user_id: UserId) -> Self {
         log::info!("creating new context");
 
         let save_path = &config
@@ -211,26 +211,6 @@ impl ChatContext {
                                 save_path: save_path.clone(),
                                 config: config.clone(),
                             };
-
-                            // let latest = context.latest_with_role_full(MessageRole::Assistant);
-
-                            // if let Some((id, message)) = latest {
-                            //     let discord_message = id.to_message(&http).await;
-
-                            //     if let Some(discord_message) = discord_message {
-                            //         Handler::enable_buttons(
-                            //             discord_message,
-                            //             http,
-                            //             message.forward,
-                            //             message.backward,
-                            //         )
-                            //         .await
-                            //         .map_err(|why| {
-                            //             log::error!("failed to enable buttons: {why:?}");
-                            //             why
-                            //         })?;
-                            //     }
-                            // }
 
                             Ok(context)
                         },

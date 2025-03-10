@@ -10,7 +10,7 @@ use super::super::Handler;
 
 impl Handler {
     pub async fn next(&self, component: ComponentInteraction, ctx: Context) -> anyhow::Result<()> {
-        let guard = EngineGuard::lock(&self.data, component.user.id, &ctx.http).await?;
+        let guard = EngineGuard::lock(&self.data, component.user.id).await?;
         let mut engine = guard.engine().await.write().await;
 
         let (_, identifier, message) = engine

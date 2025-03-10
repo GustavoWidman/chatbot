@@ -19,7 +19,7 @@ pub async fn reload(ctx: Context<'_>) -> HandlerResult<()> {
         let author = ctx.author();
         let engine = match user_map.remove(&author.id) {
             Some(engine) => chat::engine::ChatEngine::reload(engine.into_inner(), config).await,
-            None => chat::engine::ChatEngine::new(config, ctx.author().id, ctx.http()).await,
+            None => chat::engine::ChatEngine::new(config, ctx.author().id).await,
         }?;
         user_map.insert(author.id, RwLock::new(engine));
 
