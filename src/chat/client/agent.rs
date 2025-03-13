@@ -162,7 +162,7 @@ impl CompletionAgent {
             vec![]
         };
 
-        if self.config.reason.unwrap_or(false) {
+        if self.config.reason.unwrap_or(false) || self.config.fake_reason.unwrap_or(false) {
             system_prompt.push_str("
 ## Reasoning Protocol
 
@@ -226,25 +226,38 @@ After this reasoning step, provide your in-character response. This reasoning pr
 
         match response.first() {
             rig::message::AssistantContent::Text(mut text) => {
+                log::trace!("Original response:\n{:?}", text.text);
+
                 if self.config.force_lowercase.unwrap_or(false) {
                     text.text = text.text.to_lowercase();
                 }
 
                 // get rid of CoT
-                let regex = Regex::new(r"<think>((?:.|\n)*?)</think>(?:\n*)?")?;
+                let regex = Regex::new(
+                    r"<(?:think|reasoning)>((?:.|\n)*?)<\/(?:think|reasoning)>(?:\n*)?",
+                )?;
                 let matches: Vec<_> = regex.captures_iter(&text.text).collect();
                 for cap in &matches {
                     if let Some(thought) = cap.get(1) {
-                        log::trace!("Thought process: {}", thought.as_str());
+                        log::trace!("Extracted thought process:\n{}", thought.as_str());
                     }
                 }
                 text.text = regex.replace_all(&text.text, "").to_string();
 
                 // get rid of weird artifacts
+                // 1 or more space before double newline -> double newline
                 let regex = Regex::new(r" +\n\n")?;
                 text.text = regex.replace_all(&text.text, "\n\n").to_string();
+                // 2 or more spaces -> single space
                 let regex = Regex::new(r" {2,}")?;
                 text.text = regex.replace_all(&text.text, " ").to_string();
+                // 3 or more newlines -> 2 newlines
+                let regex = Regex::new(r"\n\n\n+")?;
+                text.text = regex.replace_all(&text.text, "\n\n").to_string();
+                // get rid of "\boxed{TEXT}" if present
+                // if text.text.starts_with("\\boxed{") && text.text.ends_with("}") {
+                //     text.text = text.text[7..text.text.len() - 1].to_string();
+                // }
 
                 Ok(CompletionResult::Message(Message::Assistant {
                     content: OneOrMany::one(AssistantContent::text(&text.text)),
@@ -382,29 +395,32 @@ Extract only information that meets ALL of these criteria:
 
 ## Examples
 
-### Example 1
-```json
-{
-    \"good_extraction\": \"<user> lives in Toronto and works as a software engineer\".
-    \"poor_extraction\": \"User is currently at home\"
-}
-```
+The following are a series of good and poor examples of summaries. You should attempt to apply the same approach to your own summaries, returning only good extractions and ignoring poor extractions.
 
-### Example 2
-```json
-{
-    \"good_extraction\": \"<user> has a 5-year-old daughter named Emma who loves dinosaurs\".
-    \"poor_extraction\": \"<user> needs to pick up their child from school today\"
-}
-```
+### Good Example #1
 
-### Example 3
-```json
-{
-    \"good_extraction\": \"<assistant> mentioned severe peanut allergy multiple times\".
-    \"poor_extraction\": \"<assistant> is hungry\"
-}
-```".to_string();
+<user> lives in Toronto and works as a software engineer.
+
+### Poor Example #1
+
+User is currently at home
+
+### Good Example #2
+
+<user> has a 5-year-old daughter named Emma who loves dinosaurs.
+
+### Poor Example #2
+
+<user> needs to pick up their child from school today
+
+
+### Good Example #3
+
+<assistant> mentioned severe peanut allergy multiple times.
+
+### Poor Example #3
+
+<assistant> is hungry".to_string();
 
         let prompt = Message::user(
             context
@@ -439,6 +455,8 @@ Extract only information that meets ALL of these criteria:
                 .replace(assistant_name, "<assistant>")
                 .to_owned(),
         );
+
+        log::trace!("Summarize prompt:\n{:?}", prompt);
 
         let request = CompletionRequest {
             // todo decide if i want this or not

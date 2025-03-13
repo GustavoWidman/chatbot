@@ -55,6 +55,7 @@ impl Handler {
                 relevant_memories: vec![],
                 time_since: utils::time_to_string(engine.time_since_last()),
                 system_note: None,
+                freewill: false,
             };
             engine.client.rag_recall(&mut user_prompt).await?;
 

@@ -51,7 +51,9 @@ impl Handler {
             async move {
                 loop {
                     let min = 60;
+                    // let min = 0; debbuging stuff
                     let max = 120;
+                    // let max = 5; debbuging stuff
                     let interval = time::Duration::from_secs(rand::random_range(min..max));
 
                     tokio::time::sleep(interval).await;
@@ -122,6 +124,7 @@ impl Handler {
                 let message = http.get_message(channel, msg_id).await;
 
                 if let Ok(mut message) = message {
+                    let _ = data.msg_channel.0.send("freewill".to_string());
                     let mut recv = data.msg_channel.0.subscribe();
                     tokio::spawn({
                         async move {

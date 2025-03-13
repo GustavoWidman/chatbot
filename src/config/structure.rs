@@ -42,6 +42,7 @@ pub struct LLMConfig {
     pub model: String,
     pub provider: Provider,
     pub reason: Option<bool>,
+    pub fake_reason: Option<bool>,
     pub embedding_model: String,
     pub embedding_provider: Option<Provider>,
     pub embedding_custom_url: Option<String>,

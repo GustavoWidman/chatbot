@@ -116,6 +116,8 @@ pub struct UserPrompt {
     pub time_since: String,
     pub relevant_memories: Vec<String>,
     pub system_note: Option<String>,
+    #[serde(skip)]
+    pub freewill: bool,
 }
 
 pub struct ChatContext {
@@ -127,7 +129,9 @@ impl TryInto<ChatMessage> for UserPrompt {
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<ChatMessage, Self::Error> {
-        Ok(ChatMessage::user(serde_json::to_string(&self)?))
+        let mut message = ChatMessage::user(serde_json::to_string(&self)?);
+        message.freewill = self.freewill;
+        Ok(message)
     }
 }
 impl TryInto<RigMessage> for UserPrompt {
@@ -278,6 +282,9 @@ impl ChatContext {
     pub fn latest(&self) -> Option<&Messages<ChatMessage>> {
         self.messages.last().map(|(_, m)| m)
     }
+    pub fn latest_mut(&mut self) -> Option<&mut Messages<ChatMessage>> {
+        self.messages.last_mut().map(|(_, m)| m)
+    }
 
     /// Returns the latest message with the given role.
     pub fn latest_with_role(&self, role: MessageRole) -> Option<&Messages<ChatMessage>> {
@@ -358,10 +365,22 @@ impl ChatContext {
         if self.messages.len() >= self.config.max_stm {
             let to_remove = self.messages.len() - ((self.config.max_stm * 4) / 5);
             log::info!("context close to or full, draining {to_remove} messages");
+
+            // set the latest message to be a "freewill" message
+            // (even though it's not, just mark it as the delimiter for any next drains)
+            if let Some(latest) = self.latest_mut() {
+                latest.mut_selected().freewill = true;
+            }
+
             Some(
                 self.messages
                     .drain(0..to_remove)
-                    .map(|(_, m)| m.into_selected())
+                    .rev()
+                    // only return all the way until a freewill message
+                    .map_while(|(_, messages)| {
+                        let message = messages.into_selected();
+                        (!message.freewill).then_some(message)
+                    })
                     .collect::<Vec<ChatMessage>>(),
             )
         } else {
@@ -380,9 +399,10 @@ impl ChatContext {
     pub async fn take_until_freewill(&self) -> Vec<ChatMessage> {
         self.messages
             .iter()
+            .rev()
             .map_while(|(_, messages)| {
                 let selected = messages.selected();
-                selected.freewill.then_some(selected)
+                (!selected.freewill).then_some(selected)
             })
             .cloned()
             .collect::<Vec<_>>()
@@ -396,6 +416,7 @@ impl ChatContext {
                 relevant_memories: vec![],
                 time_since: utils::time_to_string(self.time_since_last()),
                 system_note: None,
+                freewill: false,
             }),
             None => None,
         };
@@ -498,6 +519,7 @@ impl ChatContext {
             system_note: Some(
                 "Please attempt to pull the user back into the conversation, making sure to keep the same tone and style as you normally would, following all previous instructions, yet keeping the time difference in mind. Your response should only contain the actual response, not your thoughts or anything else.".to_string(),
             ),
+            freewill: true,
         };
 
         // id-less message
