@@ -10,6 +10,7 @@ use serenity::{
     all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready, UserId},
     async_trait,
 };
+#[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -50,12 +51,15 @@ impl Handler {
 fn setup_ctrlc_handler() -> mpsc::Receiver<()> {
     let (sender, receiver) = mpsc::channel();
 
-    tokio::spawn({
-        let mut term_signal = signal(SignalKind::terminate()).unwrap();
-        let mut int_signal = signal(SignalKind::interrupt()).unwrap();
-        let mut hup_signal = signal(SignalKind::hangup()).unwrap();
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
 
-        async move {
+            let mut term_signal = signal(SignalKind::terminate()).expect("Failed to set SIGTERM handler");
+            let mut int_signal = signal(SignalKind::interrupt()).expect("Failed to set SIGINT handler");
+            let mut hup_signal = signal(SignalKind::hangup()).expect("Failed to set SIGHUP handler");
+
             tokio::select! {
                 _ = term_signal.recv() => {
                     log::info!("SIGTERM received, shutting down...");
@@ -71,6 +75,18 @@ fn setup_ctrlc_handler() -> mpsc::Receiver<()> {
                     let _ = sender.send(());
                 },
             };
+        }
+
+        #[cfg(windows)]
+        {
+            use tokio::signal::ctrl_c;
+
+            if let Err(e) = ctrl_c().await {
+                log::error!("Failed to set up CTRL+C handler: {e}");
+            } else {
+                log::info!("CTRL+C received, shutting down...");
+                let _ = sender.send(());
+            }
         }
     });
 
