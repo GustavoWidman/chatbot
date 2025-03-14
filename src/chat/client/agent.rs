@@ -10,7 +10,7 @@ use rig::{
     tool::{Tool, ToolDyn},
 };
 use rig_dyn::{CompletionModel, EmbeddingModel};
-use serde_json::{Value, json};
+use serde_json::json;
 use serenity::all::UserId;
 
 use crate::{
@@ -46,28 +46,31 @@ impl CompletionAgent {
         user_name: String,
         assistant_name: String,
     ) -> anyhow::Result<Self> {
-        let client = config
-            .provider
-            .client(&config.api_key, config.custom_url.as_deref())?;
-        let completion_model = Arc::new(client.completion_model(&config.model).await);
+        let client = config.completion.provider.client(
+            &config.completion.api_key,
+            config.completion.custom_url.as_deref(),
+        )?;
+        let completion_model = Arc::new(client.completion_model(&config.completion.model).await);
 
         let embedding_client = config
-            .embedding_provider
+            .embedding
+            .provider
             .map(|provider| {
                 provider.client(
                     config
-                        .embedding_api_key
+                        .embedding
+                        .api_key
                         .as_deref()
-                        .unwrap_or(&config.api_key),
-                    config.embedding_custom_url.as_deref(),
+                        .unwrap_or(&config.completion.api_key),
+                    config.embedding.custom_url.as_deref(),
                 )
             })
             .unwrap_or(Ok(client))?;
 
-        let embedding_model = match config.vector_size {
+        let embedding_model = match config.embedding.vector_size {
             Some(vector_size) => {
                 let client = embedding_client
-                    .embedding_model_with_ndims(&config.embedding_model, vector_size, None)
+                    .embedding_model_with_ndims(&config.embedding.model, vector_size, None)
                     .await
                     .ok_or(anyhow!("failed to create embedding model"))?;
 
@@ -75,7 +78,7 @@ impl CompletionAgent {
             }
             None => {
                 let client = embedding_client
-                    .embedding_model(&config.embedding_model, None)
+                    .embedding_model(&config.embedding.model, None)
                     .await
                     .ok_or(anyhow!("failed to create embedding model"))?;
 
@@ -162,7 +165,9 @@ impl CompletionAgent {
             vec![]
         };
 
-        if self.config.reason.unwrap_or(false) || self.config.fake_reason.unwrap_or(false) {
+        if self.config.completion.reason.unwrap_or(false)
+            || self.config.completion.fake_reason.unwrap_or(false)
+        {
             system_prompt.push_str("
 ## Reasoning Protocol
 
@@ -197,27 +202,27 @@ After this reasoning step, provide your in-character response. This reasoning pr
 ");
         }
 
-        let mut additional_params: HashMap<String, Value> = HashMap::new();
-        if self.config.reason.unwrap_or(false) {
-            additional_params.insert("reasoning".to_string(), json!({}));
+        let mut additional_params: HashMap<String, toml::Value> = self
+            .config
+            .additional_params
+            .clone()
+            .unwrap_or(HashMap::new());
+        if self.config.completion.reason.unwrap_or(false) {
+            additional_params.insert(
+                "reasoning".to_string(),
+                toml::Value::Table(toml::Table::new()),
+            );
         }
-        if let Some(top_p) = self.config.top_p {
-            additional_params.insert("top_p".to_string(), json!(top_p));
-        }
-        if let Some(repetition_penalty) = self.config.repetition_penalty {
-            additional_params.insert("repetition_penalty".to_string(), json!(repetition_penalty));
-        }
-
         log::trace!("additional_params: {:?}", json!(additional_params));
 
         let request = CompletionRequest {
             additional_params: Some(json!(additional_params)),
             chat_history: context.into_iter().map(|x| x.into()).collect(),
             documents: vec![],
-            max_tokens: self.config.max_tokens,
+            max_tokens: self.config.completion.max_tokens,
             preamble: Some(system_prompt),
             // preamble: None, // todo testing
-            temperature: self.config.temperature,
+            temperature: self.config.completion.temperature,
             tools,
             prompt: prompt.clone().try_into()?,
         };
@@ -351,9 +356,11 @@ After this reasoning step, provide your in-character response. This reasoning pr
         user_name: &str,
         assistant_name: &str,
     ) -> anyhow::Result<()> {
+        log::info!("summarizing {} messages", context.len());
+
         let summary = self.summarize(context, user_name, assistant_name).await?;
 
-        log::info!("summary:\n{}", summary);
+        log::trace!("summarized:\n{}", summary);
 
         let Embedding { document, vec } = self.embedding_model.embed_text(&summary).await?;
         let vec = vec.into_iter().map(|x| x as f32).collect::<Vec<f32>>();

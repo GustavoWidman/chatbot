@@ -65,12 +65,12 @@ impl MemoryStorage {
     pub fn new(config: &LLMConfig, vector_size: u64) -> Self {
         let client = Qdrant::from_url(&format!(
             "http{}://{}:{}",
-            match config.qdrant_https.unwrap_or(false) {
+            match config.embedding.qdrant_https.unwrap_or(false) {
                 true => "s",
                 false => "",
             },
-            config.qdrant_host,
-            config.qdrant_port.unwrap_or(6334)
+            config.embedding.qdrant_host,
+            config.embedding.qdrant_port.unwrap_or(6334)
         ))
         .skip_compatibility_check()
         .build()
