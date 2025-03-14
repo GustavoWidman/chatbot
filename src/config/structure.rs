@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
 use rig_dyn::Provider;
 use serde::{Deserialize, Serialize};
@@ -49,7 +53,7 @@ pub struct LLMConfig {
 
     pub use_tools: Option<bool>,
     pub force_lowercase: Option<bool>,
-    pub similarity_threshold: Option<f32>,
+    pub similarity_threshold: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]

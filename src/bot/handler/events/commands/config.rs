@@ -195,7 +195,7 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                         config.llm.similarity_threshold = None;
                     } else {
                         config.llm.similarity_threshold =
-                            Some(value.parse::<f32>().map_err(|_| {
+                            Some(value.parse::<f64>().map_err(|_| {
                                 anyhow::anyhow!(
                                     "Invalid value \"{value}\", please provide a valid number"
                                 )
@@ -330,6 +330,7 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                     config
                         .llm
                         .similarity_threshold
+                        .as_ref()
                         .map(|similarity_threshold| similarity_threshold.to_string()),
                     false,
                 ),

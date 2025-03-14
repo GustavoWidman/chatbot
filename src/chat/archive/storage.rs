@@ -80,7 +80,7 @@ impl MemoryStorage {
             client,
             settings: MemorySettings {
                 vector_size,
-                similarity_threshold: config.similarity_threshold.unwrap_or(0.5),
+                similarity_threshold: config.similarity_threshold.unwrap_or(0.5) as f32,
             },
         }
     }
