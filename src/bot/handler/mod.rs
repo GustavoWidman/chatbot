@@ -10,8 +10,6 @@ use serenity::{
     all::{Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready, UserId},
     async_trait,
 };
-#[cfg(unix)]
-use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
@@ -54,11 +52,14 @@ fn setup_ctrlc_handler() -> mpsc::Receiver<()> {
     tokio::spawn(async move {
         #[cfg(unix)]
         {
-            use tokio::signal::unix::{signal, SignalKind};
+            use tokio::signal::unix::{SignalKind, signal};
 
-            let mut term_signal = signal(SignalKind::terminate()).expect("Failed to set SIGTERM handler");
-            let mut int_signal = signal(SignalKind::interrupt()).expect("Failed to set SIGINT handler");
-            let mut hup_signal = signal(SignalKind::hangup()).expect("Failed to set SIGHUP handler");
+            let mut term_signal =
+                signal(SignalKind::terminate()).expect("Failed to set SIGTERM handler");
+            let mut int_signal =
+                signal(SignalKind::interrupt()).expect("Failed to set SIGINT handler");
+            let mut hup_signal =
+                signal(SignalKind::hangup()).expect("Failed to set SIGHUP handler");
 
             tokio::select! {
                 _ = term_signal.recv() => {
