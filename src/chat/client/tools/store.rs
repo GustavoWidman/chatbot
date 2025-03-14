@@ -1,13 +1,11 @@
 use rig::{completion::ToolDefinition, embeddings::Embedding, tool::Tool};
+use rig_dyn::EmbeddingModel;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use serenity::all::UserId;
 use std::sync::Arc;
 
-use crate::chat::{
-    archive::storage::{Memory, MemoryStorage},
-    client::providers::DynEmbeddingModel,
-};
+use crate::chat::archive::storage::{Memory, MemoryStorage};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Memory Store error")]
@@ -21,7 +19,7 @@ pub struct Args {
 #[derive(Serialize)]
 pub struct MemoryStore {
     #[serde(skip)]
-    model: Arc<Box<dyn DynEmbeddingModel>>,
+    model: Arc<Box<dyn EmbeddingModel>>,
     #[serde(skip)]
     storage: Arc<MemoryStorage>,
     #[serde(skip)]
@@ -34,7 +32,7 @@ pub struct MemoryStore {
 
 impl MemoryStore {
     pub fn new(
-        model: Arc<Box<dyn DynEmbeddingModel>>,
+        model: Arc<Box<dyn EmbeddingModel>>,
         storage: Arc<MemoryStorage>,
         user_id: UserId,
         user_name: String,

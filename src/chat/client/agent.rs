@@ -9,6 +9,7 @@ use rig::{
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolResultContent, UserContent},
     tool::{Tool, ToolDyn},
 };
+use rig_dyn::{CompletionModel, EmbeddingModel};
 use serde_json::json;
 use serenity::all::UserId;
 
@@ -21,7 +22,6 @@ use crate::{
     config::structure::LLMConfig,
 };
 
-use super::providers::{DynCompletionModel, DynEmbeddingModel};
 use super::tools;
 
 pub struct CompletionAgentSettings {
@@ -30,8 +30,8 @@ pub struct CompletionAgentSettings {
 }
 
 pub struct CompletionAgent {
-    completion_model: Arc<Box<dyn DynCompletionModel>>,
-    embedding_model: Arc<Box<dyn DynEmbeddingModel>>,
+    completion_model: Arc<Box<dyn CompletionModel>>,
+    embedding_model: Arc<Box<dyn EmbeddingModel>>,
     memory_storage: Arc<MemoryStorage>,
     tools: HashMap<String, Box<dyn ToolDyn>>,
     user_id: UserId,

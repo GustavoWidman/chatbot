@@ -1,8 +1,9 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use rig_dyn::Provider;
 use serde::{Deserialize, Serialize};
 
-use crate::chat::{client::Provider, prompt::SystemPromptBuilder};
+use crate::chat::prompt::SystemPromptBuilder;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct ChatBotConfigTOML {
