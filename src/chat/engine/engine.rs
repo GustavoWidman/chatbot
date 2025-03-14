@@ -95,7 +95,7 @@ impl ChatEngine {
             };
 
             if let Some(drained) = context.overflow {
-                log::info!("draining {drained:?}");
+                log::info!("drained {} messages", drained.len());
                 self.client
                     .store(
                         drained,

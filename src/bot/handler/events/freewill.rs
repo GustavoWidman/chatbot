@@ -96,9 +96,9 @@ impl Handler {
                 .await?;
             response.freewill = true;
 
-            log::info!("freewill response:\n{:?}", response);
-
-            // todo add chunking here
+            if let Some(content) = response.content() {
+                log::trace!("freewill response:\n{}", content);
+            }
 
             let messages = misc::chunk_message(
                 &response
@@ -177,7 +177,6 @@ impl Handler {
         bool
     }
 
-    // todo: post freewill, index context as a memory to simulate human-like behavior
     pub async fn freewill_memory_store(engine: &ChatEngine) -> anyhow::Result<()> {
         log::info!("performing freewill memory store");
 
