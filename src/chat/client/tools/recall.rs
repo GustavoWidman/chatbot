@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use rig::{completion::ToolDefinition, tool::Tool};
+use rig_dyn::EmbeddingModel;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use serenity::all::UserId;
 
-use crate::chat::{archive::storage::MemoryStorage, client::providers::DynEmbeddingModel};
+use crate::chat::archive::storage::MemoryStorage;
 
 #[derive(Deserialize, Serialize)]
 pub struct Args {
@@ -21,7 +22,7 @@ pub struct MemoryRecallError;
 #[derive(Serialize)]
 pub struct MemoryRecall {
     #[serde(skip)]
-    model: Arc<Box<dyn DynEmbeddingModel>>,
+    model: Arc<Box<dyn EmbeddingModel>>,
     #[serde(skip)]
     storage: Arc<MemoryStorage>,
     #[serde(skip)]
@@ -34,7 +35,7 @@ pub struct MemoryRecall {
 
 impl MemoryRecall {
     pub fn new(
-        model: Arc<Box<dyn DynEmbeddingModel>>,
+        model: Arc<Box<dyn EmbeddingModel>>,
         storage: Arc<MemoryStorage>,
         user_id: UserId,
         user_name: String,
