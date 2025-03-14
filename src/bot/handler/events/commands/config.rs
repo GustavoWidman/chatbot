@@ -6,39 +6,49 @@ use crate::bot::handler::{events::HandlerResult, framework::Context};
 
 #[derive(Debug, poise::ChoiceParameter)]
 pub enum KeyChoice {
+    // Completion
+    // Model
+    Model,
+    Provider,
     #[name = "API Key"]
     ApiKey,
-    Model,
     #[name = "Custom URL"]
     CustomUrl,
+    // Reasoning
+    Reason,
+    #[name = "Fake Reason"]
+    FakeReason,
+    // Additional Parameters
+    #[name = "Max Tokens"]
+    MaxTokens,
+    Temperature,
+
+    // Embedding
+    // Model
     #[name = "Embedding Model"]
     EmbeddingModel,
-    #[name = "Embedding Custom URL"]
-    EmbeddingCustomUrl,
     #[name = "Embedding Provider"]
     EmbeddingProvider,
     #[name = "Embedding API Key"]
     EmbeddingApiKey,
-    #[name = "Use Tools"]
-    UseTools,
-    #[name = "Force Lowercase"]
-    ForceLowercase,
-    Provider,
-    #[name = "Max Tokens"]
-    MaxTokens,
-    Temperature,
-    #[name = "Top P"]
-    TopP,
+    #[name = "Embedding Custom URL"]
+    EmbeddingCustomUrl,
     #[name = "Vector Size"]
     VectorSize,
-    #[name = "Memory Similarity Threshold"]
-    SimilarityThreshold,
+    // Vector DB
     #[name = "QDrant Host"]
     QdrantHost,
     #[name = "QDrant Port"]
     QdrantPort,
     #[name = "Use HTTPs for QDrant"]
     QdrantHttps,
+
+    #[name = "Use Tools"]
+    UseTools,
+    #[name = "Force Lowercase"]
+    ForceLowercase,
+    #[name = "Memory Similarity Threshold"]
+    SimilarityThreshold,
 }
 
 impl Display for KeyChoice {
@@ -56,12 +66,13 @@ impl Display for KeyChoice {
             Self::Provider => write!(f, "Provider"),
             Self::MaxTokens => write!(f, "Max Tokens"),
             Self::Temperature => write!(f, "Temperature"),
-            Self::TopP => write!(f, "Top P"),
             Self::VectorSize => write!(f, "Vector Size"),
             Self::SimilarityThreshold => write!(f, "Memory Similarity Threshold"),
             Self::QdrantHost => write!(f, "QDrant Host"),
             Self::QdrantPort => write!(f, "QDrant Port"),
             Self::QdrantHttps => write!(f, "Use HTTPs for QDrant"),
+            Self::Reason => write!(f, "Reason"),
+            Self::FakeReason => write!(f, "Fake Reason"),
         }
     }
 }
@@ -70,46 +81,50 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
     let data = ctx.data().clone();
 
     let result: anyhow::Result<()> = async {
-        if let Some(value) = value {
+        if let Some(mut value) = value {
             let mut config = data.config.write().await;
             config.update();
 
+            if value.to_lowercase() == "null" || value.to_lowercase() == "none" {
+                value = "".to_string();
+            }
+
             match key {
                 KeyChoice::ApiKey => {
-                    config.llm.api_key = value.clone();
+                    config.llm.completion.api_key = value.clone();
                 }
                 KeyChoice::Model => {
-                    config.llm.model = value.clone();
+                    config.llm.completion.model = value.clone();
                 }
                 KeyChoice::EmbeddingModel => {
-                    config.llm.embedding_model = value.clone();
+                    config.llm.embedding.model = value.clone();
                 }
                 KeyChoice::EmbeddingProvider => {
                     if value.trim().is_empty() {
-                        config.llm.embedding_provider = None;
+                        config.llm.embedding.provider = None;
                     } else {
-                        config.llm.embedding_provider = Some(value.clone().try_into()?);
+                        config.llm.embedding.provider = Some(value.clone().try_into()?);
                     }
                 }
                 KeyChoice::EmbeddingApiKey => {
                     if value.trim().is_empty() {
-                        config.llm.embedding_api_key = None;
+                        config.llm.embedding.api_key = None;
                     } else {
-                        config.llm.embedding_api_key = Some(value.clone());
+                        config.llm.embedding.api_key = Some(value.clone());
                     }
                 }
                 KeyChoice::EmbeddingCustomUrl => {
                     if value.trim().is_empty() {
-                        config.llm.embedding_custom_url = None;
+                        config.llm.embedding.custom_url = None;
                     } else {
-                        config.llm.embedding_custom_url = Some(value.clone());
+                        config.llm.embedding.custom_url = Some(value.clone());
                     }
                 }
                 KeyChoice::CustomUrl => {
                     if value.trim().is_empty() {
-                        config.llm.custom_url = None;
+                        config.llm.completion.custom_url = None;
                     } else {
-                        config.llm.custom_url = Some(value.clone());
+                        config.llm.completion.custom_url = Some(value.clone());
                     }
                 }
                 KeyChoice::UseTools => {
@@ -137,50 +152,42 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                     }
                 }
                 KeyChoice::Provider => {
-                    config.llm.provider = value.clone().try_into()?;
+                    config.llm.completion.provider = value.clone().try_into()?;
                 }
                 KeyChoice::MaxTokens => {
                     if value.trim().is_empty() {
-                        config.llm.max_tokens = None;
+                        config.llm.completion.max_tokens = None;
                     } else {
-                        config.llm.max_tokens = Some(value.parse::<u64>().map_err(|_| {
-                            anyhow::anyhow!(
-                                "Invalid value \"{value}\", please provide a valid number"
-                            )
-                        })?);
+                        config.llm.completion.max_tokens =
+                            Some(value.parse::<u64>().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "Invalid value \"{value}\", please provide a valid number"
+                                )
+                            })?);
                     }
                 }
                 KeyChoice::Temperature => {
                     if value.trim().is_empty() {
-                        config.llm.temperature = None;
+                        config.llm.completion.temperature = None;
                     } else {
-                        config.llm.temperature = Some(value.parse::<f64>().map_err(|_| {
-                            anyhow::anyhow!(
-                                "Invalid value \"{value}\", please provide a valid number"
-                            )
-                        })?);
-                    }
-                }
-                KeyChoice::TopP => {
-                    if value.trim().is_empty() {
-                        config.llm.top_p = None;
-                    } else {
-                        config.llm.top_p = Some(value.parse::<f64>().map_err(|_| {
-                            anyhow::anyhow!(
-                                "Invalid value \"{value}\", please provide a valid number"
-                            )
-                        })?);
+                        config.llm.completion.temperature =
+                            Some(value.parse::<f64>().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "Invalid value \"{value}\", please provide a valid number"
+                                )
+                            })?);
                     }
                 }
                 KeyChoice::VectorSize => {
                     if value.trim().is_empty() {
-                        config.llm.vector_size = None;
+                        config.llm.embedding.vector_size = None;
                     } else {
-                        config.llm.vector_size = Some(value.parse::<usize>().map_err(|_| {
-                            anyhow::anyhow!(
-                                "Invalid value \"{value}\", please provide a valid number"
-                            )
-                        })?);
+                        config.llm.embedding.vector_size =
+                            Some(value.parse::<usize>().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "Invalid value \"{value}\", please provide a valid number"
+                                )
+                            })?);
                     }
                 }
                 KeyChoice::SimilarityThreshold => {
@@ -196,24 +203,49 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                     }
                 }
                 KeyChoice::QdrantHost => {
-                    config.llm.qdrant_host = value.clone();
+                    config.llm.embedding.qdrant_host = value.clone();
                 }
                 KeyChoice::QdrantPort => {
                     if value.trim().is_empty() {
-                        config.llm.qdrant_port = None;
+                        config.llm.embedding.qdrant_port = None;
                     } else {
-                        config.llm.qdrant_port = Some(value.parse::<u16>().map_err(|_| {
-                            anyhow::anyhow!(
-                                "Invalid value \"{value}\", please provide a valid number"
-                            )
-                        })?);
+                        config.llm.embedding.qdrant_port =
+                            Some(value.parse::<u16>().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "Invalid value \"{value}\", please provide a valid number"
+                                )
+                            })?);
                     }
                 }
                 KeyChoice::QdrantHttps => {
                     if value.trim().is_empty() {
-                        config.llm.qdrant_https = None;
+                        config.llm.embedding.qdrant_https = None;
                     } else {
-                        config.llm.qdrant_https =
+                        config.llm.embedding.qdrant_https =
+                            Some(value.to_lowercase().parse::<bool>().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "Invalid value \"{value}\", please provide a valid boolean"
+                                )
+                            })?);
+                    }
+                }
+                KeyChoice::Reason => {
+                    if value.trim().is_empty() {
+                        config.llm.completion.reason = None;
+                    } else {
+                        config.llm.completion.reason =
+                            Some(value.to_lowercase().parse::<bool>().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "Invalid value \"{value}\", please provide a valid boolean"
+                                )
+                            })?);
+                    }
+                }
+                KeyChoice::FakeReason => {
+                    if value.trim().is_empty() {
+                        config.llm.completion.fake_reason = None;
+                    } else {
+                        config.llm.completion.fake_reason =
                             Some(value.to_lowercase().parse::<bool>().map_err(|_| {
                                 anyhow::anyhow!(
                                     "Invalid value \"{value}\", please provide a valid boolean"
@@ -225,29 +257,39 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
 
             config.async_save().await?;
 
-            ctx.send(
-                CreateReply::default()
-                    .content(format!("Successfully updated the {key} to `{value}`"))
-                    .ephemeral(true),
-            )
-            .await?;
+            if value.trim().is_empty() {
+                ctx.send(
+                    CreateReply::default()
+                        .content(format!("Successfully unset the {key}"))
+                        .ephemeral(true),
+                )
+                .await?;
+            } else {
+                ctx.send(
+                    CreateReply::default()
+                        .content(format!("Successfully updated the {key} to `{value}`"))
+                        .ephemeral(true),
+                )
+                .await?;
+            };
         } else {
             let config = data.config.read().await;
 
             let (value, sensitive): (Option<String>, bool) = match key {
-                KeyChoice::ApiKey => (Some(config.llm.api_key.clone()), true),
-                KeyChoice::Model => (Some(config.llm.model.clone()), false),
-                KeyChoice::EmbeddingModel => (Some(config.llm.embedding_model.clone()), false),
-                KeyChoice::EmbeddingCustomUrl => (config.llm.embedding_custom_url.clone(), false),
-                KeyChoice::CustomUrl => (config.llm.custom_url.clone(), false),
+                KeyChoice::ApiKey => (Some(config.llm.completion.api_key.clone()), true),
+                KeyChoice::Model => (Some(config.llm.completion.model.clone()), false),
+                KeyChoice::EmbeddingModel => (Some(config.llm.embedding.model.clone()), false),
+                KeyChoice::EmbeddingCustomUrl => (config.llm.embedding.custom_url.clone(), false),
+                KeyChoice::CustomUrl => (config.llm.completion.custom_url.clone(), false),
                 KeyChoice::EmbeddingProvider => (
                     config
                         .llm
-                        .embedding_provider
+                        .embedding
+                        .provider
                         .map(|provider| provider.to_string()),
                     false,
                 ),
-                KeyChoice::EmbeddingApiKey => (config.llm.embedding_api_key.clone(), true),
+                KeyChoice::EmbeddingApiKey => (config.llm.embedding.api_key.clone(), true),
                 KeyChoice::ForceLowercase => (
                     config
                         .llm
@@ -259,10 +301,11 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                     config.llm.use_tools.map(|use_tools| use_tools.to_string()),
                     false,
                 ),
-                KeyChoice::Provider => (Some(config.llm.provider.to_string()), false),
+                KeyChoice::Provider => (Some(config.llm.completion.provider.to_string()), false),
                 KeyChoice::MaxTokens => (
                     config
                         .llm
+                        .completion
                         .max_tokens
                         .map(|max_tokens| max_tokens.to_string()),
                     false,
@@ -270,14 +313,15 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                 KeyChoice::Temperature => (
                     config
                         .llm
+                        .completion
                         .temperature
                         .map(|temperature| temperature.to_string()),
                     false,
                 ),
-                KeyChoice::TopP => (config.llm.top_p.map(|top_p| top_p.to_string()), false),
                 KeyChoice::VectorSize => (
                     config
                         .llm
+                        .embedding
                         .vector_size
                         .map(|vector_size| vector_size.to_string()),
                     false,
@@ -289,10 +333,11 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                         .map(|similarity_threshold| similarity_threshold.to_string()),
                     false,
                 ),
-                KeyChoice::QdrantHost => (Some(config.llm.qdrant_host.clone()), false),
+                KeyChoice::QdrantHost => (Some(config.llm.embedding.qdrant_host.clone()), false),
                 KeyChoice::QdrantPort => (
                     config
                         .llm
+                        .embedding
                         .qdrant_port
                         .map(|qdrant_port| qdrant_port.to_string()),
                     false,
@@ -300,8 +345,25 @@ pub async fn config(ctx: Context<'_>, key: KeyChoice, value: Option<String>) -> 
                 KeyChoice::QdrantHttps => (
                     config
                         .llm
+                        .embedding
                         .qdrant_https
                         .map(|qdrant_https| qdrant_https.to_string()),
+                    false,
+                ),
+                KeyChoice::Reason => (
+                    config
+                        .llm
+                        .completion
+                        .reason
+                        .map(|reason| reason.to_string()),
+                    false,
+                ),
+                KeyChoice::FakeReason => (
+                    config
+                        .llm
+                        .completion
+                        .fake_reason
+                        .map(|fake_reason| fake_reason.to_string()),
                     false,
                 ),
             };

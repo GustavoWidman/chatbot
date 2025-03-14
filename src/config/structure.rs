@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -38,24 +38,47 @@ pub struct FreewillConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct LLMConfig {
-    pub api_key: String,
-    pub model: String,
-    pub provider: Provider,
-    pub reason: Option<bool>,
-    pub fake_reason: Option<bool>,
-    pub embedding_model: String,
-    pub embedding_provider: Option<Provider>,
-    pub embedding_custom_url: Option<String>,
-    pub embedding_api_key: Option<String>,
-    pub custom_url: Option<String>,
+    // Completion
+    pub completion: LLMCompletionConfig,
+
+    // Embedding
+    pub embedding: LLMEmbeddingConfig,
+
+    pub additional_params: Option<HashMap<String, toml::Value>>,
+
     pub use_tools: Option<bool>,
     pub force_lowercase: Option<bool>,
+    pub similarity_threshold: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct LLMCompletionConfig {
+    // Model
+    pub model: String,
+    pub provider: Provider,
+    pub api_key: String,
+    pub custom_url: Option<String>,
+
+    // Reasoning
+    pub reason: Option<bool>,
+    pub fake_reason: Option<bool>,
+
+    // Additional Parameters
     pub max_tokens: Option<u64>,
     pub temperature: Option<f64>,
-    pub top_p: Option<f64>,
-    pub repetition_penalty: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct LLMEmbeddingConfig {
+    // Model
+    pub model: String,
+    pub provider: Option<Provider>,
+    pub api_key: Option<String>,
+    pub custom_url: Option<String>,
+
     pub vector_size: Option<usize>,
-    pub similarity_threshold: Option<f32>,
+
+    // Vector DB
     pub qdrant_host: String,
     pub qdrant_port: Option<u16>,
     pub qdrant_https: Option<bool>,

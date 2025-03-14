@@ -33,4 +33,3 @@ toml = "0.8.20"
 git = "https://github.com/GustavoWidman/branch-context"
 branch = "main"
 features = ["serde"]
-
