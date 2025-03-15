@@ -360,10 +360,17 @@ impl ChatContext {
         Ok(())
     }
 
-    /// If STM is full, drain until STM is 80% of max_stm
+    /// If STM is full, drain until STM is x% of max_stm
     async fn drain_overflow(&mut self) -> Option<Vec<ChatMessage>> {
         if self.messages.len() >= self.config.max_stm {
-            let to_remove = self.messages.len() - ((self.config.max_stm * 4) / 5);
+            let to_remove = self.messages.len()
+                - (self
+                    .config
+                    .stm_drain_percentage
+                    .map(|p| 1.0 - p)
+                    .unwrap_or(0.8) // default to 80% drain
+                    * self.config.max_stm as f64)
+                    .round() as usize;
             log::info!("context close to or full, draining {to_remove} messages");
 
             // set the latest message to be a "freewill" message

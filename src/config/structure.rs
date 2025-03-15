@@ -22,6 +22,7 @@ pub struct ChatBotConfigInner {
 pub struct ContextConfig {
     pub max_stm: usize,
     pub save_to_disk_folder: Option<PathBuf>,
+    pub stm_drain_percentage: Option<f64>,
     pub system: SystemPromptBuilder,
 }
 
