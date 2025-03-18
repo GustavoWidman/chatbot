@@ -23,3 +23,5 @@ services:
             - type: bind
               source: ./saves
               target: /saves
+        extra_hosts:
+            - "host.docker.internal:host-gateway"

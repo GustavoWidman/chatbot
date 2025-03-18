@@ -29,7 +29,6 @@ thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["full"] }
 toml = "0.8.20"
 
-
 [dependencies.branch-context]
 git = "https://github.com/GustavoWidman/branch-context"
 branch = "main"

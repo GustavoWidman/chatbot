@@ -5,10 +5,6 @@ FROM rust:1-alpine AS builder
 RUN apk add --no-cache musl-dev sqlite-static openssl-dev openssl-libs-static pkgconf git libpq-dev
 ENV SYSROOT=/dummy
 
-# ARG VARIABLE_1
-# ARG VARIABLE_2
-# ...
-
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./src ./src
