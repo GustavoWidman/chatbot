@@ -128,8 +128,48 @@ pub struct ChatContext {
 impl TryInto<ChatMessage> for UserPrompt {
     type Error = anyhow::Error;
 
-    fn try_into(self) -> Result<ChatMessage, Self::Error> {
-        let mut message = ChatMessage::user(serde_json::to_string(&self)?);
+    fn try_into(mut self) -> Result<ChatMessage, Self::Error> {
+        let mut message = String::new();
+
+        if self.system_note.is_some() {
+            message.push_str(&format!(
+                "System Note:\n{}\n\n",
+                self.system_note.as_ref().unwrap()
+            ));
+        }
+
+        message.push_str(&format!(
+            "The current time is {}, {} since the last message before this one.\n\n",
+            self.current_time, self.time_since
+        ));
+
+        if self.relevant_memories.len() > 0 {
+            message.push_str(&format!(
+                "You have recalled the following memories:\n{}\n\n",
+                self.relevant_memories
+                    .iter_mut()
+                    .map(|m| format!("```memory\n{}\n```", m))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+
+        if let Some(content) = self.content {
+            message.push_str(&format!(
+                "Respond to the following message:\n{}\n\n",
+                content
+            ));
+        }
+
+        // remove the last double newline
+        message.pop();
+        message.pop();
+
+        log::trace!("message:\n{}\n\n", message);
+
+        // let mut message = ChatMessage::user(serde_json::to_string(&self)?);
+        let mut message = ChatMessage::user(message);
+
         message.freewill = self.freewill;
         Ok(message)
     }
