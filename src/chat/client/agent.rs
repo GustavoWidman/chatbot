@@ -171,13 +171,6 @@ impl CompletionAgent {
             system_prompt.push_str("
 ## Reasoning Protocol
 
-The user will always send you a prompt in JSON format, including the following fields:
-
-- `content`: The actual content of the message the user wants you to respond to.
-- `time_since_last_message`: The time since the last message in seconds.
-- `relevant_memories`: A list of memories that are relevant to the current conversation.
-- `system_note`: A message from the system, which may contain information about the user's request or any other relevant information.
-
 When you receive a prompt, always take time to think carefully before responding. Use <think> tags to show your reasoning process. This thinking process should:
 
 1. Analyze the user's request and identify key elements
