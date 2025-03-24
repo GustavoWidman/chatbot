@@ -99,7 +99,7 @@ Your job is to respond to last message from {}. You can use other messages for c
             ));
         }
 
-        println!("\n{}\n", prompt);
+        log::trace!("system prompt:\n{}\n\n", prompt);
 
         Self { inner: prompt }
     }

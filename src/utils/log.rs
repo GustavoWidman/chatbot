@@ -38,8 +38,8 @@ pub struct Logger;
 impl Logger {
     pub fn init(level: Option<LevelFilter>) {
         Builder::new()
-            .filter(Some("chatbot"), level.unwrap_or(LevelFilter::Trace))
-            .filter(Some("rig-core"), LevelFilter::Trace)
+            .filter(Some("chatbot"), level.unwrap_or(LevelFilter::Info))
+            .filter(Some("rig-core"), LevelFilter::Warn)
             .filter(Some("reqwest"), LevelFilter::Warn)
             .filter(Some("serenity"), LevelFilter::Warn)
             .filter(Some("poise"), LevelFilter::Warn)

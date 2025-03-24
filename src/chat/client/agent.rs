@@ -433,19 +433,21 @@ User is currently at home
             context
                 .into_iter()
                 .filter_map(|msg| {
-                    let content = msg.content().map(|content| {
-                        serde_json::from_str::<serde_json::Value>(&content)
-                            .ok()
-                            .and_then(|json| {
-                                json.get("content")
-                                    .and_then(|c| c.as_str())
-                                    .or_else(|| json.get("system_note").and_then(|n| n.as_str()))
-                                    .map(String::from)
-                            })
-                            .unwrap_or(content)
-                    })?;
-
                     let role = msg.role();
+
+                    let content = match role {
+                        MessageRole::User => {
+                            let user_prompt: UserPrompt = TryFrom::try_from(msg)
+                                .map_err(|why| {
+                                    log::warn!("failed to deserialize user prompt: {why:?}");
+                                })
+                                .ok()?;
+
+                            user_prompt.content.or(user_prompt.system_note)
+                        }
+                        MessageRole::Assistant => msg.content(),
+                    }?;
+
                     Some(format!(
                         "{}: {}\n---\n",
                         match role {

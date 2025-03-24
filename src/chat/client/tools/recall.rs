@@ -51,7 +51,7 @@ impl MemoryRecall {
     }
 
     fn search(&self, args: Args) -> anyhow::Result<Vec<String>> {
-        println!("given args: {:?}", serde_json::to_string_pretty(&args)?);
+        log::info!("given args: {:?}", serde_json::to_string_pretty(&args)?);
 
         let embedded = tokio::task::block_in_place(|| {
             futures::executor::block_on(self.model.embed_text(&args.query))

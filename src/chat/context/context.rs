@@ -3,6 +3,7 @@ use std::{fs::File, hash::Hash, path::PathBuf};
 use anyhow::{Result, anyhow};
 use branch_context::{Message, Messages};
 use indexmap::IndexMap;
+use regex::Regex;
 use rig::message::{Message as RigMessage, UserContent};
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Http, Message as SerenityMessage, MessageId, UserId};
@@ -185,12 +186,60 @@ impl TryFrom<ChatMessage> for UserPrompt {
     type Error = anyhow::Error;
 
     fn try_from(value: ChatMessage) -> Result<Self, Self::Error> {
-        serde_json::from_str::<Self>(
-            &value
-                .content()
-                .ok_or(anyhow::anyhow!("message does not have a content"))?,
-        )
-        .map_err(|why| anyhow::anyhow!("failed to deserialize user prompt: {why:?}"))
+        let regex = Regex::new(
+            r"^(?:System Note:\n((?:.|\n)*)(?:\n\n)?)?(?:The current time is (.*), (.*) since the last message before this one\.(?:\n\n)?)(?:You have recalled the following memories:((?:.|\n)*)(?:\n\n)?)?(?:Respond to the following message:\n((?:.|\n)*)(?:\n\n)?)$",
+        )?;
+
+        let content = value.content().unwrap_or_default();
+        let matches = regex
+            .captures(&content)
+            .ok_or(anyhow::anyhow!("message did not match regex pattern"))?;
+
+        let system_note = matches.get(1).map(|m| m.as_str().trim().to_string());
+        let current_time = matches
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .ok_or(anyhow::anyhow!("current time not found in message"))?;
+        let time_since = matches
+            .get(3)
+            .map(|m| m.as_str().trim().to_string())
+            .ok_or(anyhow::anyhow!("time since not found in message"))?;
+        let relevant_memories = matches
+            .get(4)
+            .map(|m| m.as_str().trim())
+            .map(|memories_text| {
+                let memory_regex = Regex::new(r"```memory\n*((?:.|\n)*?)\n*```").unwrap();
+                let mut memories = Vec::new();
+
+                for cap in memory_regex.captures_iter(memories_text) {
+                    if let Some(memory_content) = cap.get(1) {
+                        let memory_content = memory_content.as_str().trim().to_string();
+                        if memory_content.len() > 0 {
+                            memories.push(memory_content);
+                        }
+                    }
+                }
+
+                memories
+            })
+            .unwrap_or_default();
+        let content = matches.get(5).map(|m| m.as_str().trim().to_string());
+
+        // serde_json::from_str::<Self>(
+        //     &value
+        //         .content()
+        //         .ok_or(anyhow::anyhow!("message does not have a content"))?,
+        // )
+        // .map_err(|why| anyhow::anyhow!("failed to deserialize user prompt: {why:?}"))
+
+        Ok(Self {
+            content,
+            current_time,
+            time_since,
+            relevant_memories,
+            system_note,
+            freewill: value.freewill,
+        })
     }
 }
 
