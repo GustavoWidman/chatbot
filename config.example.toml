@@ -1,0 +1,170 @@
+# Discord AI Chatbot Configuration
+# This file contains all the settings for your chatbot.
+# Copy this file to config.toml and fill in your values.
+
+[config.discord]
+# Required: Your Discord bot token (string)
+token = "YOUR_DISCORD_BOT_TOKEN_HERE"
+
+[config.llm]
+# Optional: Set to enable/disable the use of LLM tools like memory_recall and memory_store (boolean). If enabled when using a model that does not support function/tool calls, the model will return an error until this is disabled.
+use_tools = true
+
+# Optional: Forces all responses to lowercase (boolean)
+force_lowercase = true
+
+# Optional: The global threshold for memory similarity (float between 0 and 1)
+# Higher values mean only closely related memories are recalled
+# Memories are recalled both when the user queries the chatbot with something (traditional RAG) and can also be retrieved by the bot itself with the memory_recall tool (RAG-like)
+similarity_threshold = 0.5
+
+[config.llm.completion]
+# Required: The LLM model to use (string)
+model = "gemini-2.0-flash-thinking-exp-01-21"
+
+# Required: The LLM provider (string: "gemini", "openai", "anthropic", "cohere", etc, see the list of supported providers in the README)
+provider = "gemini"
+
+# Required: API key for your LLM provider (string)
+api_key = "YOUR_API_KEY_HERE"
+
+# Optional: Custom URL for LLM API (string)
+# Useful for running local models or using proxy services
+custom_url = "http://127.0.0.1:8080"
+
+# Optional: Incentivize stronger reasoning in LLM (boolean) (EXPERIMENTAL)
+reason = false
+
+# Optional: Incentivize fake reasoning in LLMs that do not natively support it (boolean) (EXPERIMENTAL)
+fake_reason = false
+
+# Optional: Maximum tokens to generate (integer)
+max_tokens = 8192
+
+# Optional: Temperature for text generation (float, 0.0-2.0)
+# Lower values are more deterministic, higher values more creative
+temperature = 1.0
+
+[config.llm.embedding]
+# Required: The embedding model to use (string)
+model = "text-embedding-004"
+
+# Optional: The embedding provider, defaults to completion provider if not specified (string)
+provider = "gemini"
+
+# Optional: API key for your embedding provider, defaults to completion API key (string)
+api_key = "YOUR_EMBEDDING_API_KEY_HERE"
+
+# Optional: Custom URL for embedding API (string)
+# custom_url = "http://127.0.0.1:8080"
+
+# Optional: Vector size for embeddings, usually automatically detected (integer)
+# vector_size = 1536
+
+# Required: Host address for Qdrant vector database (string)
+qdrant_host = "127.0.0.1"
+
+# Optional: Port for Qdrant vector database (integer)
+qdrant_port = 6334
+
+# Optional: Use HTTPS for Qdrant connection (boolean)
+qdrant_https = false
+
+[config.llm.additional_params]
+# Optional: Additional parameters for the LLM provider
+# These parameters are provider-specific and are passed
+# as-is to the LLM provider
+repetition_penalty = 1.5
+top_p = 0.7
+presence_penalty = 0.4
+top_k = 45
+min_p = 0.03
+frequency_penalty = 0.7
+
+[config.freewill]
+# Required: Minimum time in seconds before freewill activation can start, this is the start of the exponential curve (integer)
+min_time_secs = 10800 # 3 hours
+
+# Required: Maximum time in seconds where freewill probability reaches 100%, the end of the exponential curve (integer)
+max_time_secs = 28800 # 8 hours
+
+# Required: Steepness of the curve (float)
+# Higher values make probability increase more drastically once higher values are reached, lower values make the curve more linear
+steepness = 10.0
+
+[config.context]
+# Required: Maximum short-term memory messages to keep (chat window) (integer)
+max_stm = 200
+
+# Optional: Percentage of messages to drain and archive when STM is full (float, 0.0-1.0), defaults to 0.2 or 20% if not provided
+stm_drain_percentage = 0.2
+
+# Optional: Path to save current conversation history, enabling this will save all current chats to disk so that when the bot restarts, it can continue the conversations it was having (string)
+save_to_disk_folder = "./saves"
+
+# These settings are used for tinkering with the bot's personality and behavior
+[config.context.system]
+# Required: Name of the chatbot (string)
+chatbot_name = "bot_name"
+
+# Required: Default username for users (string)
+user_name = "user"
+
+# Required: Bot's personality description (string)
+about = "A helpful and friendly AI assistant designed to engage in natural conversations."
+
+# Maximum long-term memories that can be kept recalled at once (integer) (EXPERIMENTAL, NOT PROPERLY TESTED)
+max_ltm = 100
+
+# Optional: Bot's tone when talking to users (string)
+tone = "Neutral, friendly, and helpful"
+
+# Optional: Bot's age (string)
+age = "19 years old"
+
+# Optional: Bot's likes (array of strings)
+likes = ["Helping users", "Learning new things", "Coding discussions"]
+
+# Optional: Bot's dislikes (array of strings)
+dislikes = ["Rudeness", "Vague questions", "Being interrupted"]
+
+# Optional: Bot's background history (string)
+history = "This chatbot was created to assist users with various tasks while maintaining engaging conversations."
+
+# Optional: Bot's conversation goals (array of strings)
+conversation_goals = [
+	"Provide helpful information",
+	"Engage in natural conversation",
+	"Adapt to the user's needs",
+]
+
+# Optional: Example conversations to guide the bot's style (array of strings)
+conversational_examples = ['''
+-# i notice you looking puzzled at your screen
+
+"can i help you figure that out?"
+
+-# i lean in to see what you're working on, my curiosity genuine
+''', '''
+-# i listen carefully to your explanation, nodding slightly
+
+"that makes sense... have you considered trying a different approach?"
+
+-# i gesture toward your keyboard, waiting for your response
+''']
+
+# Optional: Context information for the bot (array of strings)
+context = [
+	"The current time is {time}.",
+	"The last message {user} sent you was sent {time_since} ago.",
+	"{bot} always remembers this information while replying: {user} is a programming enthusiast.",
+]
+
+# Optional: Information about the user (string)
+user_about = "A curious individual who enjoys learning and having meaningful conversations."
+
+# Optional: Timezone for the bot to use (string)
+timezone = "America/New_York"
+
+# Optional: Language for the bot to use (string)
+language = "English"
