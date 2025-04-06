@@ -66,6 +66,7 @@ This project depends on my dependency [`rig-dyn`](https://github.com/GustavoWidm
 - [`openrouter`](https://openrouter.ai/)
 - [`ollama`](https://ollama.ai/)
 - [`perplexity`](https://www.perplexity.ai/)
+- [`together`](https://www.together.ai/)
 - [`xai`](https://x.ai/)
 
 ### Running
